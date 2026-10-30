@@ -39,11 +39,13 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.pathfinder.data.db.TrailSummary
+import com.pathfinder.recording.RecordingSession
 import java.text.DateFormat
 import java.util.Date
 
@@ -58,6 +60,8 @@ fun HomeScreen(
 ) {
     val trails by viewModel.trailList.collectAsStateWithLifecycle()
     val settings by viewModel.appSettings.collectAsStateWithLifecycle()
+    val recording by RecordingSession.state.collectAsStateWithLifecycle()
+    val context = LocalContext.current
     var showNewTrail by rememberSaveable { mutableStateOf(false) }
     var pendingDelete by rememberSaveable { mutableStateOf<Long?>(null) }
 
@@ -104,6 +108,7 @@ fun HomeScreen(
                 items(list, key = { it.trail.id }) { summary ->
                     TrailRow(
                         summary = summary,
+                        recording = recording.trailId == summary.trail.id,
                         onClick = { onOpenTrail(summary.trail.id) },
                         onDelete = { pendingDelete = summary.trail.id },
                     )
@@ -129,7 +134,11 @@ fun HomeScreen(
             title = { Text("Apagar trilha?") },
             text = { Text("\"$name\" e todos os seus pontos serão apagados.") },
             confirmButton = {
-                TextButton(onClick = { viewModel.deleteTrail(id); pendingDelete = null }) { Text("Apagar") }
+                TextButton(onClick = {
+                    if (recording.trailId == id) RecordingSession.stop(context)
+                    viewModel.deleteTrail(id)
+                    pendingDelete = null
+                }) { Text("Apagar") }
             },
             dismissButton = { TextButton(onClick = { pendingDelete = null }) { Text("Cancelar") } },
         )
@@ -137,7 +146,7 @@ fun HomeScreen(
 }
 
 @Composable
-private fun TrailRow(summary: TrailSummary, onClick: () -> Unit, onDelete: () -> Unit) {
+private fun TrailRow(summary: TrailSummary, recording: Boolean, onClick: () -> Unit, onDelete: () -> Unit) {
     val date = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT)
         .format(Date(summary.trail.updatedAt))
     val points = when (summary.pointCount) {
@@ -149,7 +158,7 @@ private fun TrailRow(summary: TrailSummary, onClick: () -> Unit, onDelete: () ->
         modifier = Modifier.clickable(onClick = onClick),
         leadingContent = { Icon(Icons.Filled.Route, null) },
         headlineContent = { Text(summary.trail.name) },
-        supportingContent = { Text("$points · $date") },
+        supportingContent = { Text(if (recording) "● Gravando · $points" else "$points · $date") },
         trailingContent = {
             IconButton(onClick = onDelete) { Icon(Icons.Filled.Delete, "Apagar") }
         },
