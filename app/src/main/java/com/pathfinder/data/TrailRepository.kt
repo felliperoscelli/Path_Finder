@@ -10,7 +10,9 @@ import com.pathfinder.data.db.TrailSummary
 import com.pathfinder.data.db.TrailWithPoints
 import com.pathfinder.geo.DeclinationProvider
 import com.pathfinder.geo.TrailCalculator
+import com.pathfinder.geo.TrailEditing
 import kotlinx.coroutines.flow.Flow
+import java.io.File
 
 /** Dados de um novo ponto, antes dos cálculos. */
 data class NewPoint(
@@ -49,7 +51,24 @@ class TrailRepository(
         )
     }
 
-    suspend fun deleteTrail(id: Long) = trailDao.deleteById(id)
+    /** Altera nome e limites de desvio da trilha. */
+    suspend fun updateTrail(id: Long, name: String, deviationDistanceMeters: Int, deviationTimeSeconds: Int) {
+        val trail = trailDao.getById(id) ?: return
+        trailDao.update(
+            trail.copy(
+                name = name.trim(),
+                deviationDistanceMeters = deviationDistanceMeters,
+                deviationTimeSeconds = deviationTimeSeconds,
+                updatedAt = System.currentTimeMillis(),
+            )
+        )
+    }
+
+    suspend fun deleteTrail(id: Long) {
+        val photos = pointDao.getForTrail(id).mapNotNull { it.photoPath }
+        trailDao.deleteById(id)
+        photos.forEach { File(it).delete() }
+    }
 
     /**
      * Declinação usada pela trilha. Fica fixa depois do primeiro ponto, para que
@@ -59,27 +78,88 @@ class TrailRepository(
         trail.declinationDegrees
             ?: declination.declinationAt(latitude, longitude, altitude ?: 0.0, System.currentTimeMillis())
 
-    /** Acrescenta um ponto ao final da trilha e recalcula azimutes e distâncias. */
-    suspend fun addPoint(trailId: Long, point: NewPoint): Long = db.withTransaction {
+    /** Acrescenta um ponto ao final da trilha. */
+    suspend fun addPoint(trailId: Long, point: NewPoint): Long = insertPoint(trailId, Int.MAX_VALUE, point)
+
+    /**
+     * Insere um ponto na posição [index] (0 = nova partida; maior ou igual ao
+     * número de pontos = no final) e recalcula a trilha.
+     */
+    suspend fun insertPoint(trailId: Long, index: Int, point: NewPoint): Long = db.withTransaction {
         val trail = requireNotNull(trailDao.getById(trailId)) { "Trilha $trailId não existe" }
-        val now = System.currentTimeMillis()
-        val decl = declinationFor(trail, point.latitude, point.longitude, point.altitude)
+        val existing = pointDao.getForTrail(trailId)
         val id = pointDao.insert(
             TrailPointEntity(
                 trailId = trailId,
-                sequence = pointDao.maxSequence(trailId) + 1,
+                sequence = existing.size,
                 name = point.name.trim(),
                 notes = point.notes.trim(),
                 latitude = point.latitude,
                 longitude = point.longitude,
                 altitude = point.altitude,
                 photoPath = point.photoPath,
-                createdAt = now,
+                createdAt = System.currentTimeMillis(),
             )
         )
-        trailDao.update(trail.copy(declinationDegrees = decl, updatedAt = now))
-        pointDao.update(TrailCalculator.recalculate(pointDao.getForTrail(trailId), decl))
+        val inserted = requireNotNull(pointDao.getById(id))
+        saveOrder(trail, TrailEditing.insert(existing, inserted, index))
         id
+    }
+
+    /** Altera nome, observações e foto. A foto antiga é apagada se for trocada. */
+    suspend fun updatePointDetails(pointId: Long, name: String, notes: String, photoPath: String?) {
+        val point = pointDao.getById(pointId) ?: return
+        pointDao.update(listOf(point.copy(name = name.trim(), notes = notes.trim(), photoPath = photoPath)))
+        touch(point.trailId)
+        point.photoPath?.takeIf { it != photoPath }?.let { File(it).delete() }
+    }
+
+    /** Move o ponto para outra posição geográfica e recalcula a trilha. */
+    suspend fun movePoint(pointId: Long, latitude: Double, longitude: Double) = db.withTransaction {
+        val point = pointDao.getById(pointId) ?: return@withTransaction
+        val trail = trailDao.getById(point.trailId) ?: return@withTransaction
+        // A altitude da leitura original deixa de valer na nova posição.
+        val moved = point.copy(latitude = latitude, longitude = longitude, altitude = null)
+        saveOrder(trail, pointDao.getForTrail(trail.id).map { if (it.id == pointId) moved else it })
+    }
+
+    /** Muda a ordem do ponto na trilha e recalcula. */
+    suspend fun reorderPoint(pointId: Long, newIndex: Int) = db.withTransaction {
+        val point = pointDao.getById(pointId) ?: return@withTransaction
+        val trail = trailDao.getById(point.trailId) ?: return@withTransaction
+        saveOrder(trail, TrailEditing.move(pointDao.getForTrail(trail.id), { it.id }, pointId, newIndex))
+    }
+
+    suspend fun deletePoint(pointId: Long) {
+        val point = pointDao.getById(pointId) ?: return
+        db.withTransaction {
+            val trail = trailDao.getById(point.trailId) ?: return@withTransaction
+            pointDao.delete(point)
+            saveOrder(trail, pointDao.getForTrail(trail.id))
+        }
+        point.photoPath?.let { File(it).delete() }
+    }
+
+    /**
+     * Grava os pontos na ordem dada, recalculando UTM, azimutes e distâncias.
+     * Fixa a declinação da trilha no primeiro ponto, se ainda não houver.
+     */
+    private suspend fun saveOrder(trail: TrailEntity, ordered: List<TrailPointEntity>) {
+        val first = ordered.firstOrNull()
+        val decl = when {
+            trail.declinationDegrees != null -> trail.declinationDegrees
+            first != null -> declinationFor(trail, first.latitude, first.longitude, first.altitude)
+            else -> null
+        }
+        if (decl != null) {
+            val renumbered = ordered.mapIndexed { i, p -> p.copy(sequence = i) }
+            pointDao.update(TrailCalculator.recalculate(renumbered, decl))
+        }
+        trailDao.update(trail.copy(declinationDegrees = decl, updatedAt = System.currentTimeMillis()))
+    }
+
+    private suspend fun touch(trailId: Long) {
+        trailDao.getById(trailId)?.let { trailDao.update(it.copy(updatedAt = System.currentTimeMillis())) }
     }
 
     fun observeTrack(trailId: Long, source: TrackSource): Flow<List<TrackPointEntity>> =

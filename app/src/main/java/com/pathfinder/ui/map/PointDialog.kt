@@ -12,16 +12,23 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -33,30 +40,42 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
+import com.pathfinder.data.db.TrailPointEntity
 import com.pathfinder.data.settings.CoordinateFormat
 import com.pathfinder.geo.Formats
 import java.io.File
 
-/** Diálogo para nomear e salvar um novo ponto, mostrando os valores calculados. */
+/**
+ * Formulário de ponto (nome, observações, foto). A foto original só é apagada
+ * pelo repositório ao salvar; fotos novas descartadas são apagadas aqui.
+ */
 @Composable
-fun PointDialog(
-    draft: PointDraft,
-    preview: PointPreview?,
-    format: CoordinateFormat,
-    defaultName: String,
+private fun PointFormDialog(
+    title: String,
+    confirmLabel: String,
+    initialName: String,
+    initialNotes: String,
+    initialPhoto: String?,
     onConfirm: (name: String, notes: String, photoPath: String?) -> Unit,
     onDismiss: () -> Unit,
+    onDelete: (() -> Unit)? = null,
+    content: @Composable () -> Unit,
 ) {
     val context = LocalContext.current
-    var name by rememberSaveable { mutableStateOf(defaultName) }
-    var notes by rememberSaveable { mutableStateOf("") }
-    var photoPath by rememberSaveable { mutableStateOf<String?>(null) }
+    var name by rememberSaveable { mutableStateOf(initialName) }
+    var notes by rememberSaveable { mutableStateOf(initialNotes) }
+    var photoPath by rememberSaveable { mutableStateOf(initialPhoto) }
     var pendingPhoto by rememberSaveable { mutableStateOf<String?>(null) }
+
+    /** Apaga a foto atual se ela foi tirada neste diálogo (não é a original). */
+    fun discardNewPhoto() {
+        photoPath?.takeIf { it != initialPhoto }?.let { File(it).delete() }
+    }
 
     val takePicture = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
         val file = pendingPhoto?.let(::File)
         if (ok && file != null && file.length() > 0) {
-            photoPath?.let { File(it).delete() }
+            discardNewPhoto()
             photoPath = file.absolutePath
         } else {
             file?.delete()
@@ -73,13 +92,13 @@ fun PointDialog(
 
     AlertDialog(
         onDismissRequest = {},
-        title = { Text("Novo ponto") },
+        title = { Text(title) },
         text = {
             Column(
                 Modifier.verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                PointInfo(draft, preview, format)
+                content()
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
@@ -94,35 +113,155 @@ fun PointDialog(
                     minLines = 2,
                     modifier = Modifier.fillMaxWidth(),
                 )
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = ::launchCamera) {
                         Icon(Icons.Filled.PhotoCamera, null)
-                        Text(if (photoPath == null) " Foto" else " Trocar foto")
+                        Text(if (photoPath == null) " Foto" else " Trocar")
                     }
-                    photoPath?.let { PhotoThumbnail(it) }
+                    photoPath?.let {
+                        PhotoThumbnail(it)
+                        TextButton(onClick = { discardNewPhoto(); photoPath = null }) { Text("Remover") }
+                    }
+                }
+                if (onDelete != null) {
+                    var confirmDelete by remember { mutableStateOf(false) }
+                    TextButton(onClick = { confirmDelete = true }) {
+                        Icon(Icons.Filled.Delete, null, tint = MaterialTheme.colorScheme.error)
+                        Text(" Apagar ponto", color = MaterialTheme.colorScheme.error)
+                    }
+                    if (confirmDelete) {
+                        AlertDialog(
+                            onDismissRequest = { confirmDelete = false },
+                            title = { Text("Apagar \"$initialName\"?") },
+                            text = { Text("Os azimutes e distâncias dos pontos seguintes serão recalculados.") },
+                            confirmButton = {
+                                TextButton(onClick = { discardNewPhoto(); confirmDelete = false; onDelete() }) {
+                                    Text("Apagar")
+                                }
+                            },
+                            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancelar") } },
+                        )
+                    }
                 }
             }
         },
         confirmButton = {
             TextButton(onClick = { onConfirm(name, notes, photoPath) }, enabled = name.isNotBlank()) {
-                Text("Salvar ponto")
+                Text(confirmLabel)
             }
         },
         dismissButton = {
-            TextButton(onClick = {
-                photoPath?.let { File(it).delete() }
-                onDismiss()
-            }) { Text("Cancelar") }
+            TextButton(onClick = { discardNewPhoto(); onDismiss() }) { Text("Cancelar") }
         },
     )
 }
 
+/** Diálogo para criar um ponto, escolhendo onde ele entra na trilha. */
 @Composable
-private fun PointInfo(draft: PointDraft, preview: PointPreview?, format: CoordinateFormat) {
+fun NewPointDialog(
+    draft: PointDraft,
+    points: List<TrailPointEntity>,
+    suggestedIndex: Int,
+    previewAt: (index: Int) -> PointPreview?,
+    format: CoordinateFormat,
+    defaultName: String,
+    onConfirm: (name: String, notes: String, photoPath: String?, index: Int) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var index by rememberSaveable { mutableIntStateOf(suggestedIndex.coerceIn(0, points.size)) }
+    PointFormDialog(
+        title = "Novo ponto",
+        confirmLabel = "Salvar ponto",
+        initialName = defaultName,
+        initialNotes = "",
+        initialPhoto = null,
+        onConfirm = { name, notes, photo -> onConfirm(name, notes, photo, index) },
+        onDismiss = onDismiss,
+    ) {
+        PointInfo(draft.latitude, draft.longitude, draft.origin, remember(index) { previewAt(index) }, format)
+        if (points.isNotEmpty()) InsertPositionSelector(points, index) { index = it }
+    }
+}
+
+/** Diálogo para editar ou apagar um ponto existente. */
+@Composable
+fun EditPointDialog(
+    point: TrailPointEntity,
+    format: CoordinateFormat,
+    declinationDegrees: Double?,
+    onSave: (name: String, notes: String, photoPath: String?) -> Unit,
+    onDelete: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    PointFormDialog(
+        title = "${point.sequence + 1}. ${point.name}",
+        confirmLabel = "Salvar",
+        initialName = point.name,
+        initialNotes = point.notes,
+        initialPhoto = point.photoPath,
+        onConfirm = onSave,
+        onDismiss = onDismiss,
+        onDelete = onDelete,
+    ) {
+        val utm = Formats.utm(point.utmZone, point.utmBand, point.utmEasting, point.utmNorthing)
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(Formats.coordinate(format, point.latitude, point.longitude, utm), style = MaterialTheme.typography.bodyLarge)
+            if (point.sequence == 0) {
+                Text("Ponto de partida", style = MaterialTheme.typography.bodyMedium)
+            } else {
+                Text(
+                    "Azimute verdadeiro ${Formats.azimuth(point.trueAzimuthDegrees)} · " +
+                        "magnético ${Formats.azimuth(point.magneticAzimuthDegrees)} · " +
+                        Formats.distance(point.distanceFromPreviousMeters),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+            Text("Declinação: ${Formats.declination(declinationDegrees)}", style = MaterialTheme.typography.bodySmall)
+            Text(
+                "Para mover, ative a edição no mapa e arraste o marcador.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun InsertPositionSelector(points: List<TrailPointEntity>, index: Int, onSelect: (Int) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    val options = (0..points.size).map { it to insertLabel(points, it) }
+    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
+        OutlinedTextField(
+            value = insertLabel(points, index),
+            onValueChange = {},
+            readOnly = true,
+            label = { Text("Posição na trilha") },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
+            modifier = Modifier.fillMaxWidth().menuAnchor(MenuAnchorType.PrimaryNotEditable),
+        )
+        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            options.forEach { (i, label) ->
+                DropdownMenuItem(text = { Text(label) }, onClick = { onSelect(i); expanded = false })
+            }
+        }
+    }
+}
+
+private fun insertLabel(points: List<TrailPointEntity>, index: Int): String {
+    fun label(i: Int) = "${i + 1}. ${points[i].name}"
+    return when (index) {
+        0 -> "Antes de ${label(0)} (nova partida)"
+        points.size -> "No final, depois de ${label(points.size - 1)}"
+        else -> "Entre ${label(index - 1)} e ${label(index)}"
+    }
+}
+
+@Composable
+private fun PointInfo(latitude: Double, longitude: Double, origin: String, preview: PointPreview?, format: CoordinateFormat) {
     val utm = preview?.utm?.let(Formats::utm)
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Text(Formats.coordinate(format, draft.latitude, draft.longitude, utm), style = MaterialTheme.typography.bodyLarge)
-        Text(draft.origin, style = MaterialTheme.typography.bodySmall)
+        Text(Formats.coordinate(format, latitude, longitude, utm), style = MaterialTheme.typography.bodyLarge)
+        Text(origin, style = MaterialTheme.typography.bodySmall)
         val leg = preview?.leg
         if (leg != null) {
             Text(

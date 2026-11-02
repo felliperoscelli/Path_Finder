@@ -10,7 +10,7 @@ A especificação completa está em [`docs/especificacao.md`](docs/especificacao
 |---|---|---|
 | 1 | Estrutura do projeto, banco local e mapa offline com OpenTopoMap | ✅ |
 | 2 | Gravação de trilha, pontos, azimute, declinação e UTM | ✅ |
-| 3 | Edição de pontos e ficha em PDF | — |
+| 3 | Edição de pontos e ficha em PDF | ✅ |
 | 4 | Navegação do monitor e alerta de desvio local | — |
 | 5 | Nearby Connections entre dois aparelhos | — |
 | 6 | Rede em malha com repasse e armazenamento | — |
@@ -61,6 +61,27 @@ A especificação completa está em [`docs/especificacao.md`](docs/especificacao
 - **Lista de pontos**: botão de lista no mapa mostra todos os pontos no formato de
   coordenada escolhido nas configurações, com azimutes, distâncias, declinação e fotos.
 
+## Etapa 3 – edição de pontos e ficha em PDF
+
+- **Edição no mapa**: o lápis na barra superior ativa o modo edição; toque e segure um
+  marcador e arraste para movê-lo (a linha acompanha o arraste). Tocar num ponto abre
+  o formulário para renomear, mudar observações, trocar/remover a foto ou apagar.
+- **Inserir pontos**: ao criar um ponto (GPS ou toque longo no mapa) é possível escolher
+  a posição na trilha. O app sugere o trecho mais próximo de onde o ponto caiu, ou o
+  final se ele estiver além do último ponto.
+- **Reordenar**: na lista de pontos, setas para subir/descer cada ponto.
+- **Recálculo automático**: mover, apagar, inserir ou reordenar recalcula UTM,
+  azimutes e distâncias da trilha inteira. A declinação fica a mesma da trilha.
+- **Editar trilha**: nome e limites de desvio próprios (distância e tempo).
+- **Ficha em PDF** (botão PDF na lista de pontos), A4 com cabeçalho repetido em cada página:
+  - *Completa*: coordenadas, azimute verdadeiro, azimute magnético, distância e observações;
+  - *Só coordenadas*: colunas de azimute e distância em branco, com espaço para o grupo
+    preencher à mão;
+  - coordenadas em UTM, lat/long ou ambos; observações opcionais;
+  - cabeçalho com nome da pista, data, declinação usada e formato das coordenadas;
+  - depois de gerada: imprimir (serviço de impressão do Android), compartilhar
+    (WhatsApp, e-mail…) ou salvar em uma pasta.
+
 ## Como compilar
 
 Requisitos: JDK 17+ e Android SDK (platform 35). Abra a pasta no Android Studio ou:
@@ -78,6 +99,7 @@ app/src/main/java/com/pathfinder/
 ├── data/                                # Room, repositórios e configurações
 ├── geo/                                 # UTM, Vincenty, declinação, detecção de parada
 ├── map/                                 # OpenTopoMap, cálculo de tiles e download offline
+├── pdf/                                 # conteúdo e desenho da ficha, imprimir/compartilhar
 ├── recording/                           # serviço de gravação pelo GPS e notificações
 └── ui/                                  # telas Compose (home, map, points, offline, settings)
 ```

@@ -40,8 +40,8 @@ interface TrailPointDao {
     @Query("SELECT * FROM trail_points WHERE trailId = :trailId ORDER BY sequence")
     suspend fun getForTrail(trailId: Long): List<TrailPointEntity>
 
-    @Query("SELECT COALESCE(MAX(sequence), -1) FROM trail_points WHERE trailId = :trailId")
-    suspend fun maxSequence(trailId: Long): Int
+    @Query("SELECT * FROM trail_points WHERE id = :id")
+    suspend fun getById(id: Long): TrailPointEntity?
 
     @Insert
     suspend fun insert(point: TrailPointEntity): Long

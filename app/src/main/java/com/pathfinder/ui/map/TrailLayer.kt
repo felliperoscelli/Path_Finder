@@ -13,13 +13,26 @@ import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay
 
 /**
  * Desenha sobre o mapa o percurso gravado pelo GPS (azul) e a trilha
- * (linha vermelha entre os pontos + marcadores numerados).
+ * (linha vermelha entre os pontos + marcadores numerados). No modo de
+ * edição os marcadores podem ser arrastados.
  */
-class TrailLayer(private val mapView: MapView) {
+class TrailLayer(
+    private val mapView: MapView,
+    private val onPointClick: (TrailPointEntity) -> Unit,
+    private val onPointMoved: (TrailPointEntity, GeoPoint) -> Unit,
+) {
     private val trailOverlays = mutableListOf<Overlay>()
+    private val markers = mutableListOf<Marker>()
+    private var trailLine: Polyline? = null
     private var trackLine: Polyline? = null
     private var shownPoints: List<TrailPointEntity>? = null
     private var shownTrackSize = -1
+
+    var editing: Boolean = false
+        set(value) {
+            field = value
+            markers.forEach { it.isDraggable = value }
+        }
 
     fun showTrack(track: List<TrackPointEntity>) {
         if (track.size == shownTrackSize) return
@@ -27,7 +40,6 @@ class TrailLayer(private val mapView: MapView) {
         val line = trackLine ?: Polyline(mapView).apply {
             outlinePaint.color = Color.rgb(30, 136, 229)
             outlinePaint.strokeWidth = 6f
-            isGeodesic = false
             trackLine = this
             insertBelowMyLocation(listOf(this))
         }
@@ -39,27 +51,47 @@ class TrailLayer(private val mapView: MapView) {
         if (points == shownPoints) return
         mapView.overlays.removeAll(trailOverlays.toSet())
         trailOverlays.clear()
+        markers.clear()
+        trailLine = null
         shownPoints = points
         if (points.isNotEmpty()) {
             val geo = points.map { GeoPoint(it.latitude, it.longitude) }
-            if (geo.size > 1) {
-                trailOverlays += Polyline(mapView).apply {
-                    setPoints(geo)
-                    outlinePaint.color = Color.rgb(198, 40, 40)
-                    outlinePaint.strokeWidth = 8f
-                }
-            }
+            trailLine = Polyline(mapView).apply {
+                setPoints(geo)
+                outlinePaint.color = Color.rgb(198, 40, 40)
+                outlinePaint.strokeWidth = 8f
+            }.also { trailOverlays += it }
             points.forEachIndexed { index, p ->
-                trailOverlays += Marker(mapView).apply {
+                markers += Marker(mapView).apply {
                     position = geo[index]
                     title = "${p.sequence + 1}. ${p.name}"
-                    snippet = p.notes.takeIf { it.isNotBlank() }
                     setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+                    isDraggable = editing
+                    setOnMarkerClickListener { _, _ -> onPointClick(p); true }
+                    setOnMarkerDragListener(DragListener(index, p))
                 }
             }
+            trailOverlays += markers
             insertBelowMyLocation(trailOverlays)
         }
         mapView.invalidate()
+    }
+
+    /** Atualiza a linha durante o arraste e salva a posição ao soltar. */
+    private inner class DragListener(private val index: Int, private val point: TrailPointEntity) :
+        Marker.OnMarkerDragListener {
+        override fun onMarkerDragStart(marker: Marker) = Unit
+
+        override fun onMarkerDrag(marker: Marker) {
+            val line = trailLine ?: return
+            val pts = line.actualPoints.toMutableList()
+            if (index in pts.indices) {
+                pts[index] = marker.position
+                line.setPoints(pts)
+            }
+        }
+
+        override fun onMarkerDragEnd(marker: Marker) = onPointMoved(point, marker.position)
     }
 
     /** Ajusta o enquadramento para mostrar a trilha e o percurso inteiros. */

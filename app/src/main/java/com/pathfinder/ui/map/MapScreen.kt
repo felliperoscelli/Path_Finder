@@ -17,6 +17,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.AddLocationAlt
 import androidx.compose.material.icons.filled.CenterFocusStrong
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FiberManualRecord
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Stop
@@ -90,7 +92,16 @@ fun MapScreen(
     val mapView = rememberTopoMapView()
     val permission = rememberLocationPermission()
     val myLocation = rememberMyLocationOverlay(mapView, permission.granted)
-    val trailLayer = remember(mapView) { TrailLayer(mapView) }
+    var editing by rememberSaveable { mutableStateOf(false) }
+    var selectedPointId by rememberSaveable { mutableStateOf<Long?>(null) }
+    val trailLayer = remember(mapView) {
+        TrailLayer(
+            mapView,
+            onPointClick = { selectedPointId = it.id },
+            onPointMoved = { p, g -> viewModel.movePoint(p.id, g.latitude, g.longitude) },
+        )
+    }
+    LaunchedEffect(editing) { trailLayer.editing = editing }
     var framedTrail by rememberSaveable { mutableStateOf(false) }
     var draft by rememberSaveable(stateSaver = PointDraftSaver) { mutableStateOf<PointDraft?>(null) }
     val snackbar = remember { SnackbarHostState() }
@@ -156,6 +167,10 @@ fun MapScreen(
                 },
                 actions = {
                     if (trailId != null) {
+                        IconButton(onClick = { editing = !editing }) {
+                            if (editing) Icon(Icons.Filled.Check, "Concluir edição")
+                            else Icon(Icons.Filled.Edit, "Editar pontos")
+                        }
                         IconButton(onClick = { trailLayer.zoomToTrail() }) {
                             Icon(Icons.Filled.CenterFocusStrong, "Ver trilha inteira")
                         }
@@ -193,12 +208,27 @@ fun MapScreen(
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
             TopoMap(mapView, Modifier.fillMaxSize())
+            if (editing) {
+                Surface(
+                    modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth().padding(8.dp),
+                    color = MaterialTheme.colorScheme.secondaryContainer,
+                    shape = MaterialTheme.shapes.medium,
+                    shadowElevation = 4.dp,
+                ) {
+                    Text(
+                        "Modo edição: toque e segure um ponto e arraste para movê-lo. " +
+                            "Toque num ponto para renomear ou apagar.",
+                        modifier = Modifier.padding(12.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
         }
     }
 
     // "Marcar ponto aqui?" quando o usuário fica parado durante a gravação.
     val stop = recording.stopSuggestion
-    if (recordingThis && stop != null && draft == null) {
+    if (recordingThis && stop != null && draft == null && selectedPointId == null) {
         val seconds = ((System.currentTimeMillis() - stop.sinceMillis) / 1000).coerceAtLeast(0)
         AlertDialog(
             onDismissRequest = RecordingSession::dismissStopSuggestion,
@@ -217,16 +247,37 @@ fun MapScreen(
     }
 
     draft?.let { d ->
-        PointDialog(
+        val points = trail?.orderedPoints.orEmpty()
+        NewPointDialog(
             draft = d,
-            preview = remember(d, trail) { viewModel.preview(d) },
+            points = points,
+            suggestedIndex = remember(d) { viewModel.suggestedIndex(d) },
+            previewAt = { index -> viewModel.preview(d, index) },
             format = format,
             defaultName = remember(d) { viewModel.nextPointName() },
-            onConfirm = { name, notes, photo ->
-                viewModel.addPoint(d, name, notes, photo)
+            onConfirm = { name, notes, photo, index ->
+                viewModel.addPoint(d, name, notes, photo, index)
                 draft = null
             },
             onDismiss = { draft = null },
+        )
+    }
+
+    val selected = selectedPointId?.let { id -> trail?.points?.firstOrNull { it.id == id } }
+    if (selected != null) {
+        EditPointDialog(
+            point = selected,
+            format = format,
+            declinationDegrees = trail?.trail?.declinationDegrees,
+            onSave = { name, notes, photo ->
+                viewModel.updatePoint(selected.id, name, notes, photo)
+                selectedPointId = null
+            },
+            onDelete = {
+                viewModel.deletePoint(selected.id)
+                selectedPointId = null
+            },
+            onDismiss = { selectedPointId = null },
         )
     }
 }

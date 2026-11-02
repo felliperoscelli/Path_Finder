@@ -14,6 +14,7 @@ import com.pathfinder.data.settings.SettingsRepository
 import com.pathfinder.geo.LatLon
 import com.pathfinder.geo.LegMetrics
 import com.pathfinder.geo.TrailCalculator
+import com.pathfinder.geo.TrailEditing
 import com.pathfinder.geo.Utm
 import com.pathfinder.geo.UtmCoordinate
 import com.pathfinder.recording.RecordingSession
@@ -62,10 +63,11 @@ class MapViewModel(
     val coordinateFormat: StateFlow<CoordinateFormat> = settings.settings.map { it.coordinateFormat }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), CoordinateFormat.BOTH)
 
-    fun preview(draft: PointDraft): PointPreview? {
+    /** Valores do ponto se ele for inserido na posição [index]. */
+    fun preview(draft: PointDraft, index: Int): PointPreview? {
         val t = trail.value ?: return null
         val decl = trails.declinationFor(t.trail, draft.latitude, draft.longitude, draft.altitude)
-        val previous = t.orderedPoints.lastOrNull()
+        val previous = t.orderedPoints.getOrNull(index - 1)
         val here = LatLon(draft.latitude, draft.longitude)
         return PointPreview(
             utm = Utm.fromLatLon(draft.latitude, draft.longitude),
@@ -75,13 +77,31 @@ class MapViewModel(
         )
     }
 
+    /** Posição sugerida: no trecho mais próximo, ou no final. */
+    fun suggestedIndex(draft: PointDraft): Int {
+        val points = trail.value?.orderedPoints.orEmpty().map { LatLon(it.latitude, it.longitude) }
+        return TrailEditing.suggestInsertIndex(points, LatLon(draft.latitude, draft.longitude))
+    }
+
     fun nextPointName(): String = "Ponto ${(trail.value?.points?.size ?: 0) + 1}"
 
-    fun addPoint(draft: PointDraft, name: String, notes: String, photoPath: String?) {
+    fun addPoint(draft: PointDraft, name: String, notes: String, photoPath: String?, index: Int) {
         val id = trailId ?: return
         viewModelScope.launch {
-            trails.addPoint(id, NewPoint(draft.latitude, draft.longitude, draft.altitude, name, notes, photoPath))
+            trails.insertPoint(id, index, NewPoint(draft.latitude, draft.longitude, draft.altitude, name, notes, photoPath))
         }
+    }
+
+    fun updatePoint(pointId: Long, name: String, notes: String, photoPath: String?) {
+        viewModelScope.launch { trails.updatePointDetails(pointId, name, notes, photoPath) }
+    }
+
+    fun movePoint(pointId: Long, latitude: Double, longitude: Double) {
+        viewModelScope.launch { trails.movePoint(pointId, latitude, longitude) }
+    }
+
+    fun deletePoint(pointId: Long) {
+        viewModelScope.launch { trails.deletePoint(pointId) }
     }
 
     companion object {
