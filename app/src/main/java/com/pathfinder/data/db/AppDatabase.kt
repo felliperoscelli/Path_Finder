@@ -14,7 +14,7 @@ import androidx.room.RoomDatabase
         NavigationSessionEntity::class,
         DeviationEventEntity::class,
     ],
-    version = 2,
+    version = 3,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {

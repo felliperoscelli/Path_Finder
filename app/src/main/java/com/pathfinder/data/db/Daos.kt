@@ -21,6 +21,9 @@ interface TrailDao {
     @Query("SELECT * FROM trails WHERE id = :id")
     suspend fun getById(id: Long): TrailEntity?
 
+    @Query("SELECT * FROM trails WHERE uuid = :uuid")
+    suspend fun getByUuid(uuid: String): TrailEntity?
+
     @Transaction
     @Query("SELECT * FROM trails WHERE id = :id")
     fun observeWithPoints(id: Long): Flow<TrailWithPoints?>
@@ -51,6 +54,12 @@ interface TrailPointDao {
 
     @Delete
     suspend fun delete(point: TrailPointEntity)
+
+    @Insert
+    suspend fun insertAll(points: List<TrailPointEntity>)
+
+    @Query("DELETE FROM trail_points WHERE trailId = :trailId")
+    suspend fun deleteForTrail(trailId: Long)
 }
 
 @Dao
@@ -60,6 +69,9 @@ interface TrackPointDao {
 
     @Insert
     suspend fun insert(point: TrackPointEntity): Long
+
+    @Insert
+    suspend fun insertAll(points: List<TrackPointEntity>)
 
     @Query("SELECT * FROM track_points WHERE sessionId = :sessionId ORDER BY timestamp")
     fun observeSession(sessionId: Long): Flow<List<TrackPointEntity>>

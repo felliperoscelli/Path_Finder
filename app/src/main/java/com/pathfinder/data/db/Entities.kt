@@ -7,14 +7,18 @@ import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
 import androidx.room.Relation
+import java.util.UUID
 
 /**
  * Uma pista (trilha) de orientação criada pelo coordenador.
  * Cada trilha guarda seus próprios limites de desvio (Módulo 2).
  */
-@Entity(tableName = "trails")
+@Entity(tableName = "trails", indices = [Index(value = ["uuid"], unique = true)])
 data class TrailEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    /** Identificador global: a mesma trilha tem o mesmo uuid em todos os aparelhos. */
+    @ColumnInfo(defaultValue = "")
+    val uuid: String = UUID.randomUUID().toString(),
     val name: String,
     val notes: String = "",
     val createdAt: Long,

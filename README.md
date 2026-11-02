@@ -12,7 +12,7 @@ A especificação completa está em [`docs/especificacao.md`](docs/especificacao
 | 2 | Gravação de trilha, pontos, azimute, declinação e UTM | ✅ |
 | 3 | Edição de pontos e ficha em PDF | ✅ |
 | 4 | Navegação do monitor e alerta de desvio local | ✅ |
-| 5 | Nearby Connections entre dois aparelhos | — |
+| 5 | Nearby Connections entre dois aparelhos | ✅ |
 | 6 | Rede em malha com repasse e armazenamento | — |
 | 7 | Painel do coordenador, alertas remotos e mensagens | — |
 | 8 | Testes de campo e ajustes de bateria | — |
@@ -109,6 +109,34 @@ A especificação completa está em [`docs/especificacao.md`](docs/especificacao
 - **Banco de dados v2** com migração a partir da v1 (sessões de navegação, eventos de
   desvio e `sessionId` no trajeto), testada contra o esquema exportado.
 
+## Etapa 5 – comunicação entre aparelhos e compartilhamento da trilha
+
+- **Rede local** (ícone de rede na tela inicial): liga a Nearby Connections (estratégia
+  `P2P_CLUSTER`, Bluetooth + Wi-Fi Direct) em um serviço em primeiro plano. Cada aparelho
+  anuncia e procura ao mesmo tempo e conecta sozinho aos outros aparelhos com o app e a
+  rede ligada; reconecta se a ligação cair. A tela mostra os aparelhos e o estado de cada um.
+  O nome mostrado é o das Configurações.
+- **Protocolo** (`net/Protocol.kt`): toda mensagem tem ID único, origem, horário, contador
+  de saltos e prioridade (alerta > normal > posição), em JSON compactado com GZIP. Cópias
+  repetidas são descartadas pelo ID. Mensagens grandes (trilhas com percurso longo) vão
+  como stream.
+- **Coordenador → monitor**: na lista de pontos, "Enviar trilha" → "Enviar para N
+  aparelhos". O monitor recebe uma notificação e a trilha aparece na lista; um reenvio da
+  mesma trilha (mesmo identificador) atualiza a cópia em vez de duplicar.
+- **Monitor → coordenador**: durante a navegação o monitor envia a posição e o progresso
+  no intervalo das configurações (padrão 30 s), ao alcançar cada ponto, e na hora em que o
+  alarme de desvio dispara ou o grupo volta à rota.
+- **No coordenador**: a tela "Rede local" lista os grupos com trilha, próximo ponto,
+  último ponto alcançado, distância da rota e tempo desde a última atualização. Um alerta
+  de desvio toca o alarme, vibra e mostra notificação; há botão para silenciar.
+  (O painel com mapa vem na etapa 7.)
+- **Arquivos**: exportar a trilha como `.json` (formato completo do Path Finder, inclui o
+  percurso gravado) ou `.gpx` (abre em Google Earth, OsmAnd etc.) para compartilhar ou
+  salvar; importar `.json` ou `.gpx` pelo ícone de arquivo da tela inicial.
+- **Banco de dados v3**: cada trilha ganhou um identificador global (`uuid`), com migração.
+
+Observação: a rede aceita qualquer aparelho com o Path Finder e a rede ligada por perto.
+
 ## Como compilar
 
 Requisitos: JDK 17+ e Android SDK (platform 35). Abra a pasta no Android Studio ou:
@@ -128,6 +156,8 @@ app/src/main/java/com/pathfinder/
 ├── navigation/                          # regras da navegação, alarme e serviço do monitor
 ├── map/                                 # OpenTopoMap, cálculo de tiles e download offline
 ├── pdf/                                 # conteúdo e desenho da ficha, imprimir/compartilhar
+├── net/                                 # Nearby Connections, protocolo, painel de monitores
 ├── recording/                           # serviço de gravação pelo GPS e notificações
-└── ui/                                  # telas Compose (home, map, points, navigate, offline, settings)
+├── transfer/                            # trilha em JSON/GPX, exportar e importar
+└── ui/                                  # telas Compose (home, map, points, navigate, network, offline, settings)
 ```

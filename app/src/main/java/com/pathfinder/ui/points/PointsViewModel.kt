@@ -10,7 +10,11 @@ import com.pathfinder.data.TrailRepository
 import com.pathfinder.data.db.TrailWithPoints
 import com.pathfinder.data.settings.CoordinateFormat
 import com.pathfinder.data.settings.SettingsRepository
+import com.pathfinder.net.NetworkHub
 import com.pathfinder.pdf.PdfActions
+import com.pathfinder.transfer.FileActions
+import com.pathfinder.transfer.Gpx
+import com.pathfinder.transfer.TrailJson
 import com.pathfinder.pdf.SheetOptions
 import com.pathfinder.pdf.TrailPdfRenderer
 import com.pathfinder.pdf.TrailSheetBuilder
@@ -37,7 +41,11 @@ class PointsViewModel(
     private val trailId: Long,
     private val trails: TrailRepository,
     settings: SettingsRepository,
+    private val hub: NetworkHub,
 ) : ViewModel() {
+    val connectedDevices: StateFlow<Int> = hub.nearby.state.map { it.connected.size }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
+
     val trail: StateFlow<TrailWithPoints?> = trails.observeTrail(trailId)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
     val format: StateFlow<CoordinateFormat> = settings.settings.map { it.coordinateFormat }
@@ -80,6 +88,28 @@ class PointsViewModel(
         }
     }
 
+    /** Envia a trilha aos aparelhos conectados; retorna quantos receberam. */
+    fun shareOverNetwork(onResult: (Int) -> Unit) {
+        viewModelScope.launch { onResult(hub.shareTrail(trailId)) }
+    }
+
+    /** Gera o arquivo .json ou .gpx da trilha para compartilhar ou salvar. */
+    fun exportFile(gpx: Boolean, onReady: (File?) -> Unit) {
+        viewModelScope.launch {
+            val file = runCatching {
+                withContext(Dispatchers.IO) {
+                    val pkg = trails.exportPackage(trailId) ?: error("Trilha não encontrada")
+                    val ext = if (gpx) "gpx" else "json"
+                    File(FileActions.exportDir(app), "${FileActions.safeName(pkg.name)}.$ext").apply {
+                        parentFile?.mkdirs()
+                        writeText(if (gpx) Gpx.write(pkg) else TrailJson.encode(pkg))
+                    }
+                }
+            }.getOrNull()
+            onReady(file)
+        }
+    }
+
     fun dismissPdf() {
         _pdf.value = null
     }
@@ -88,7 +118,7 @@ class PointsViewModel(
         fun factory(trailId: Long) = viewModelFactory {
             initializer {
                 val c = appContainer()
-                PointsViewModel(this[APPLICATION_KEY]!!, trailId, c.trailRepository, c.settingsRepository)
+                PointsViewModel(this[APPLICATION_KEY]!!, trailId, c.trailRepository, c.settingsRepository, c.networkHub)
             }
         }
     }

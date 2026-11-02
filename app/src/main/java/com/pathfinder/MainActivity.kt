@@ -15,6 +15,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 class MainActivity : ComponentActivity() {
     /** Trilha a abrir quando o app é aberto por uma notificação. */
     private val trailToOpen = MutableStateFlow<OpenTrail?>(null)
+    /** Abrir a tela da rede (notificação da rede ou de alerta de grupo). */
+    private val networkToOpen = MutableStateFlow(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -22,10 +24,13 @@ class MainActivity : ComponentActivity() {
         if (savedInstanceState == null) handleIntent(intent)
         setContent {
             val openTrail by trailToOpen.collectAsStateWithLifecycle()
+            val openNetwork by networkToOpen.collectAsStateWithLifecycle()
             PathFinderTheme {
                 PathFinderNavHost(
                     openTrail = openTrail,
                     onTrailOpened = { trailToOpen.value = null },
+                    openNetwork = openNetwork,
+                    onNetworkOpened = { networkToOpen.value = false },
                 )
             }
         }
@@ -37,6 +42,10 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleIntent(intent: Intent?) {
+        if (intent?.getBooleanExtra(EXTRA_OPEN_NETWORK, false) == true) {
+            networkToOpen.value = true
+            return
+        }
         val id = intent?.getLongExtra(EXTRA_OPEN_TRAIL_ID, -1L) ?: -1L
         if (id >= 0) trailToOpen.value = OpenTrail(id, intent?.getBooleanExtra(EXTRA_OPEN_NAVIGATION, false) == true)
     }
@@ -44,5 +53,6 @@ class MainActivity : ComponentActivity() {
     companion object {
         const val EXTRA_OPEN_TRAIL_ID = "openTrailId"
         const val EXTRA_OPEN_NAVIGATION = "openNavigation"
+        const val EXTRA_OPEN_NETWORK = "openNetwork"
     }
 }

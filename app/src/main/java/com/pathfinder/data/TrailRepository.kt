@@ -11,6 +11,9 @@ import com.pathfinder.data.db.TrailWithPoints
 import com.pathfinder.geo.DeclinationProvider
 import com.pathfinder.geo.TrailCalculator
 import com.pathfinder.geo.TrailEditing
+import com.pathfinder.transfer.PackagePoint
+import com.pathfinder.transfer.PackageTrackPoint
+import com.pathfinder.transfer.TrailPackage
 import kotlinx.coroutines.flow.Flow
 import java.io.File
 
@@ -160,6 +163,87 @@ class TrailRepository(
 
     private suspend fun touch(trailId: Long) {
         trailDao.getById(trailId)?.let { trailDao.update(it.copy(updatedAt = System.currentTimeMillis())) }
+    }
+
+    /** Pacote para enviar a trilha pela rede ou exportar como arquivo. */
+    suspend fun exportPackage(trailId: Long): TrailPackage? {
+        val trail = trailDao.getById(trailId) ?: return null
+        return TrailPackage(
+            uuid = trail.uuid,
+            name = trail.name,
+            notes = trail.notes,
+            createdAt = trail.createdAt,
+            deviationDistanceMeters = trail.deviationDistanceMeters,
+            deviationTimeSeconds = trail.deviationTimeSeconds,
+            declinationDegrees = trail.declinationDegrees,
+            points = pointDao.getForTrail(trailId).map {
+                PackagePoint(it.name, it.notes, it.latitude, it.longitude, it.altitude)
+            },
+            track = trackDao.getTrack(trailId, TrackSource.CREATION).map {
+                PackageTrackPoint(it.latitude, it.longitude, it.altitude, it.timestamp)
+            },
+        )
+    }
+
+    /** Resultado de uma importação. */
+    data class ImportResult(val trailId: Long, val replaced: Boolean)
+
+    /**
+     * Importa a trilha. Se já existir uma com o mesmo uuid (reenvio do
+     * coordenador), ela é substituída; os percursos de navegação são mantidos.
+     */
+    suspend fun importPackage(pkg: TrailPackage): ImportResult = db.withTransaction {
+        val now = System.currentTimeMillis()
+        val existing = trailDao.getByUuid(pkg.uuid)
+        val first = pkg.points.firstOrNull()
+        val decl = pkg.declinationDegrees
+            ?: first?.let { declination.declinationAt(it.latitude, it.longitude, it.altitude ?: 0.0, now) }
+        val trail = TrailEntity(
+            id = existing?.id ?: 0,
+            uuid = pkg.uuid,
+            name = pkg.name.trim().ifEmpty { "Trilha importada" },
+            notes = pkg.notes,
+            createdAt = pkg.createdAt,
+            updatedAt = now,
+            deviationDistanceMeters = pkg.deviationDistanceMeters,
+            deviationTimeSeconds = pkg.deviationTimeSeconds,
+            declinationDegrees = decl,
+        )
+        val trailId = if (existing != null) {
+            pointDao.getForTrail(existing.id).mapNotNull { it.photoPath }.forEach { File(it).delete() }
+            pointDao.deleteForTrail(existing.id)
+            trackDao.clear(existing.id, TrackSource.CREATION)
+            trailDao.update(trail)
+            existing.id
+        } else {
+            trailDao.insert(trail)
+        }
+        val points = pkg.points.mapIndexed { i, p ->
+            TrailPointEntity(
+                trailId = trailId,
+                sequence = i,
+                name = p.name,
+                notes = p.notes,
+                latitude = p.latitude,
+                longitude = p.longitude,
+                altitude = p.altitude,
+                createdAt = now,
+            )
+        }
+        pointDao.insertAll(if (decl != null) TrailCalculator.recalculate(points, decl) else points)
+        trackDao.insertAll(
+            pkg.track.map {
+                TrackPointEntity(
+                    trailId = trailId,
+                    source = TrackSource.CREATION,
+                    latitude = it.latitude,
+                    longitude = it.longitude,
+                    altitude = it.altitude,
+                    timestamp = it.timestamp,
+                )
+            }
+        )
+        ImportResult(trailId, replaced = existing != null)
     }
 
     fun observeTrack(trailId: Long, source: TrackSource): Flow<List<TrackPointEntity>> =

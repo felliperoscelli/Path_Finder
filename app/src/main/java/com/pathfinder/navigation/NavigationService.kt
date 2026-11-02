@@ -23,6 +23,11 @@ import com.pathfinder.data.NavigationRoute
 import com.pathfinder.data.db.TrackPointEntity
 import com.pathfinder.data.db.TrackSource
 import com.pathfinder.geo.Formats
+import com.pathfinder.net.BackOnRoute
+import com.pathfinder.net.DeviationAlert
+import com.pathfinder.net.PointReached
+import com.pathfinder.net.PositionUpdate
+import com.pathfinder.net.Priority as MessagePriority
 import com.pathfinder.recording.Notifications
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -39,6 +44,7 @@ class NavigationService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val container by lazy { (application as PathFinderApp).container }
     private val repo by lazy { container.navigationRepository }
+    private val hub by lazy { container.networkHub }
     private lateinit var fused: FusedLocationProviderClient
     private lateinit var alerts: AlertPlayer
 
@@ -48,6 +54,11 @@ class NavigationService : Service() {
     private var engine: NavigationEngine? = null
     private var openDeviationId: Long? = null
     private var lastSaved: Location? = null
+    private var groupName = ""
+    private var monitorName = ""
+    private var positionIntervalMs = 30_000L
+    private var lastPublishedAt = 0L
+    private var lastLocation: Location? = null
 
     private val callback = object : LocationCallback() {
         override fun onLocationResult(result: LocationResult) {
@@ -109,6 +120,10 @@ class NavigationService : Service() {
             }
             val settings = container.settingsRepository.current()
             trailId = session.trailId
+            groupName = session.groupName
+            monitorName = session.monitorName
+            positionIntervalMs = settings.positionIntervalSeconds * 1000L
+            lastPublishedAt = 0L
             route = r
             engine = NavigationEngine(
                 points = r.points,
@@ -144,7 +159,9 @@ class NavigationService : Service() {
         val events = e.onFix(location.latitude, location.longitude, accuracy, location.time)
         NavigationRuntime.update { it.copy(status = e.status, lastFix = location) }
         saveTrack(location, accuracy)
+        lastLocation = location
         events.forEach { handle(it, location) }
+        if (location.time - lastPublishedAt >= positionIntervalMs) publishPosition(location)
         updateNotification()
     }
 
@@ -154,6 +171,12 @@ class NavigationService : Service() {
             is NavigationEvent.PointReached -> {
                 alerts.chime()
                 onProgressChanged()
+                route?.let { r ->
+                    hub.publish(
+                        PointReached(location.time, event.index, r.pointNames[event.index], r.points.size, r.trailName, groupName, monitorName),
+                        MessagePriority.NORMAL,
+                    )
+                }
             }
             NavigationEvent.Finished -> Unit // o aviso de chegada já foi dado
             is NavigationEvent.DeviationAlarm -> {
@@ -173,7 +196,13 @@ class NavigationService : Service() {
                         "Há $minutes min a ${Formats.distance(event.distanceMeters)} da rota. Volte para a trilha.",
                     ),
                 )
-                // Ponto de extensão: na etapa 5 este alerta também vai ao coordenador.
+                hub.publish(
+                    DeviationAlert(
+                        event.latitude, event.longitude, location.time, event.since, event.distanceMeters,
+                        route?.trailName.orEmpty(), groupName, monitorName, event.repeat,
+                    ),
+                    MessagePriority.ALERT,
+                )
             }
             is NavigationEvent.BackOnRoute -> {
                 alerts.stop()
@@ -183,6 +212,8 @@ class NavigationService : Service() {
                 if (eventId != null) {
                     scope.launch { repo.closeDeviation(eventId, location.time, event.maxDistanceMeters) }
                 }
+                hub.publish(BackOnRoute(location.time, event.since, event.maxDistanceMeters, groupName, monitorName), MessagePriority.ALERT)
+                publishPosition(location)
             }
         }
     }
@@ -192,7 +223,36 @@ class NavigationService : Service() {
         val s = e.status
         scope.launch { repo.saveProgress(sessionId, s.nextIndex, s.reached) }
         publish()
+        lastLocation?.let(::publishPosition)
         updateNotification()
+    }
+
+    /** Envia a posição e o progresso ao coordenador pela rede local. */
+    private fun publishPosition(location: Location) {
+        val r = route ?: return
+        val s = engine?.status ?: return
+        lastPublishedAt = location.time
+        val lastReached = s.reached.maxOrNull()
+        hub.publish(
+            PositionUpdate(
+                latitude = location.latitude,
+                longitude = location.longitude,
+                accuracyMeters = if (location.hasAccuracy()) location.accuracy else null,
+                time = location.time,
+                trailUuid = r.trailUuid,
+                trailName = r.trailName,
+                groupName = groupName,
+                monitorName = monitorName,
+                nextIndex = s.nextIndex,
+                totalPoints = r.points.size,
+                lastReachedName = lastReached?.let { r.pointNames.getOrNull(it) },
+                distanceToRouteMeters = s.distanceToRouteMeters,
+                offRouteSince = s.offRouteSince,
+                alarm = s.alarmActive,
+                finished = s.finished,
+            ),
+            MessagePriority.POSITION,
+        )
     }
 
     private fun publish() {

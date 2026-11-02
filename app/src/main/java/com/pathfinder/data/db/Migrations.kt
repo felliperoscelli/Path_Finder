@@ -28,5 +28,18 @@ object Migrations {
         "CREATE INDEX IF NOT EXISTS `index_deviation_events_sessionId` ON `deviation_events` (`sessionId`)",
     )
 
-    val ALL = arrayOf(MIGRATION_1_2)
+    /** v3: identificador global (uuid) de cada trilha, para compartilhar entre aparelhos. */
+    val MIGRATION_2_3 = object : Migration(2, 3) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            SQL_2_3.forEach(db::execSQL)
+        }
+    }
+
+    internal val SQL_2_3 = listOf(
+        "ALTER TABLE `trails` ADD COLUMN `uuid` TEXT NOT NULL DEFAULT ''",
+        "UPDATE `trails` SET `uuid` = lower(hex(randomblob(16)))",
+        "CREATE UNIQUE INDEX IF NOT EXISTS `index_trails_uuid` ON `trails` (`uuid`)",
+    )
+
+    val ALL = arrayOf(MIGRATION_1_2, MIGRATION_2_3)
 }

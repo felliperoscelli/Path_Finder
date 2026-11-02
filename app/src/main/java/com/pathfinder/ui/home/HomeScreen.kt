@@ -18,10 +18,18 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Explore
+import androidx.compose.material.icons.filled.FileOpen
+import androidx.compose.material.icons.filled.Hub
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Route
 import androidx.compose.material.icons.filled.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
@@ -37,6 +45,8 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -46,7 +56,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.pathfinder.PathFinderApp
 import com.pathfinder.data.db.TrailSummary
+import kotlinx.coroutines.launch
 import com.pathfinder.data.settings.UserRole
 import com.pathfinder.navigation.NavigationRuntime
 import com.pathfinder.recording.RecordingSession
@@ -61,15 +73,29 @@ fun HomeScreen(
     onOpenMap: () -> Unit,
     onOpenOfflineMaps: () -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenNetwork: () -> Unit,
     viewModel: HomeViewModel = viewModel(factory = HomeViewModel.Factory),
 ) {
     val trails by viewModel.trailList.collectAsStateWithLifecycle()
     val settings by viewModel.appSettings.collectAsStateWithLifecycle()
+    val context = LocalContext.current
     val recording by RecordingSession.state.collectAsStateWithLifecycle()
     val navigation by NavigationRuntime.state.collectAsStateWithLifecycle()
-    val context = LocalContext.current
     var showNewTrail by rememberSaveable { mutableStateOf(false) }
     var pendingDelete by rememberSaveable { mutableStateOf<Long?>(null) }
+    val network by remember { (context.applicationContext as PathFinderApp).container.nearby.state }
+        .collectAsStateWithLifecycle()
+    val snackbar = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+    val importer = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            viewModel.importFile(uri) { result ->
+                result.onSuccess(onOpenTrail).onFailure {
+                    scope.launch { snackbar.showSnackbar("Não foi possível importar: ${it.message}") }
+                }
+            }
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -85,12 +111,21 @@ fun HomeScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = onOpenNetwork) {
+                        BadgedBox(badge = {
+                            if (network.running) Badge { Text("${network.connected.size}") }
+                        }) { Icon(Icons.Filled.Hub, "Rede local") }
+                    }
+                    IconButton(onClick = { importer.launch(arrayOf("*/*")) }) {
+                        Icon(Icons.Filled.FileOpen, "Importar trilha (.json ou .gpx)")
+                    }
                     IconButton(onClick = onOpenMap) { Icon(Icons.Filled.Map, "Mapa") }
                     IconButton(onClick = onOpenOfflineMaps) { Icon(Icons.Filled.Download, "Mapas offline") }
                     IconButton(onClick = onOpenSettings) { Icon(Icons.Filled.Settings, "Configurações") }
                 },
             )
         },
+        snackbarHost = { SnackbarHost(snackbar) },
         floatingActionButton = {
             ExtendedFloatingActionButton(
                 onClick = { showNewTrail = true },

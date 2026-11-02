@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PictureAsPdf
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -40,6 +41,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -54,6 +56,7 @@ import com.pathfinder.data.db.TrailPointEntity
 import com.pathfinder.data.settings.CoordinateFormat
 import com.pathfinder.geo.Formats
 import com.pathfinder.pdf.PdfActions
+import com.pathfinder.transfer.FileActions
 import com.pathfinder.pdf.SheetMode
 import com.pathfinder.pdf.SheetOptions
 import com.pathfinder.ui.map.EditPointDialog
@@ -73,6 +76,8 @@ fun PointsScreen(
     var editingPointId by rememberSaveable { mutableStateOf<Long?>(null) }
     var editingTrail by rememberSaveable { mutableStateOf(false) }
     var choosingPdf by rememberSaveable { mutableStateOf(false) }
+    var sharing by rememberSaveable { mutableStateOf(false) }
+    val connected by viewModel.connectedDevices.collectAsStateWithLifecycle()
 
     Scaffold(
         topBar = {
@@ -82,6 +87,9 @@ fun PointsScreen(
                     IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Voltar") }
                 },
                 actions = {
+                    IconButton(onClick = { sharing = true }, enabled = !trail?.points.isNullOrEmpty()) {
+                        Icon(Icons.Filled.Share, "Enviar trilha")
+                    }
                     IconButton(onClick = { choosingPdf = true }, enabled = !trail?.points.isNullOrEmpty()) {
                         Icon(Icons.Filled.PictureAsPdf, "Ficha em PDF")
                     }
@@ -158,6 +166,15 @@ fun PointsScreen(
             )
         }
         pdf?.let { PdfResultDialog(it, viewModel::dismissPdf) }
+        if (sharing) {
+            ShareTrailDialog(
+                connected = connected,
+                trailName = t.trail.name,
+                onNetwork = viewModel::shareOverNetwork,
+                onExport = viewModel::exportFile,
+                onDismiss = { sharing = false },
+            )
+        }
     }
 }
 
@@ -352,4 +369,68 @@ private fun PdfResultDialog(state: PdfState, onDismiss: () -> Unit) {
             },
         )
     }
+}
+
+/** Enviar a trilha pela rede local ou exportar como arquivo (.json do Path Finder ou .gpx). */
+@Composable
+private fun ShareTrailDialog(
+    connected: Int,
+    trailName: String,
+    onNetwork: (onResult: (Int) -> Unit) -> Unit,
+    onExport: (gpx: Boolean, onReady: (java.io.File?) -> Unit) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val context = LocalContext.current
+    var pendingSave by remember { mutableStateOf<java.io.File?>(null) }
+    val saver = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("*/*")) { uri ->
+        val file = pendingSave
+        if (uri != null && file != null) {
+            val ok = runCatching { FileActions.saveTo(context, file, uri) }.isSuccess
+            Toast.makeText(context, if (ok) "Arquivo salvo." else "Não foi possível salvar.", Toast.LENGTH_SHORT).show()
+        }
+        pendingSave = null
+    }
+    fun export(gpx: Boolean, save: Boolean) = onExport(gpx) { file ->
+        when {
+            file == null -> Toast.makeText(context, "Não foi possível gerar o arquivo.", Toast.LENGTH_SHORT).show()
+            save -> { pendingSave = file; saver.launch(file.name) }
+            else -> FileActions.share(context, file, if (gpx) "application/gpx+xml" else "application/json", trailName)
+        }
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Enviar trilha") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("Pela rede local (sem internet)", style = MaterialTheme.typography.labelLarge)
+                TextButton(
+                    onClick = {
+                        onNetwork { n ->
+                            Toast.makeText(context, "Trilha enviada para $n aparelho(s).", Toast.LENGTH_SHORT).show()
+                        }
+                        onDismiss()
+                    },
+                    enabled = connected > 0,
+                ) { Text(if (connected > 0) "Enviar para $connected aparelho(s) conectado(s)" else "Nenhum aparelho conectado") }
+                Text(
+                    "Ligue a rede na tela \"Rede local\" nos dois aparelhos.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Text("Por arquivo (WhatsApp, e-mail…)", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 8.dp))
+                Row {
+                    TextButton(onClick = { export(gpx = false, save = false) }) { Text("Compartilhar .json") }
+                    TextButton(onClick = { export(gpx = false, save = true) }) { Text("Salvar") }
+                }
+                Row {
+                    TextButton(onClick = { export(gpx = true, save = false) }) { Text("Compartilhar .gpx") }
+                    TextButton(onClick = { export(gpx = true, save = true) }) { Text("Salvar") }
+                }
+                Text(
+                    ".json: formato completo do Path Finder. .gpx: abre em outros apps de mapa.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Fechar") } },
+    )
 }

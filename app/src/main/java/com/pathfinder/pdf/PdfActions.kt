@@ -1,8 +1,6 @@
 package com.pathfinder.pdf
 
-import android.content.ActivityNotFoundException
 import android.content.Context
-import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.os.CancellationSignal
@@ -12,7 +10,7 @@ import android.print.PrintAttributes
 import android.print.PrintDocumentAdapter
 import android.print.PrintDocumentInfo
 import android.print.PrintManager
-import androidx.core.content.FileProvider
+import com.pathfinder.transfer.FileActions
 import java.io.File
 import java.io.FileOutputStream
 
@@ -23,10 +21,7 @@ object PdfActions {
     fun outputDir(context: Context) = File(context.cacheDir, "pdf")
 
     /** Nome de arquivo seguro a partir do nome da trilha. */
-    fun fileName(trailName: String): String {
-        val base = trailName.trim().replace(Regex("[^\\p{L}\\p{N}_ -]"), "").replace(' ', '_').take(60)
-        return "ficha_${base.ifEmpty { "trilha" }}.pdf"
-    }
+    fun fileName(trailName: String): String = "ficha_${FileActions.safeName(trailName)}.pdf"
 
     fun print(context: Context, file: File, jobName: String) {
         val manager = context.getSystemService(PrintManager::class.java)
@@ -34,27 +29,11 @@ object PdfActions {
     }
 
     /** Envia por WhatsApp, e-mail etc. */
-    fun share(context: Context, file: File, title: String): Boolean {
-        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
-        val send = Intent(Intent.ACTION_SEND)
-            .setType("application/pdf")
-            .putExtra(Intent.EXTRA_STREAM, uri)
-            .putExtra(Intent.EXTRA_SUBJECT, title)
-            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        return try {
-            context.startActivity(Intent.createChooser(send, "Compartilhar ficha"))
-            true
-        } catch (_: ActivityNotFoundException) {
-            false
-        }
-    }
+    fun share(context: Context, file: File, title: String): Boolean =
+        FileActions.share(context, file, "application/pdf", title)
 
     /** Copia a ficha para um local escolhido pelo usuário (Storage Access Framework). */
-    fun saveTo(context: Context, file: File, destination: Uri) {
-        context.contentResolver.openOutputStream(destination)?.use { out ->
-            file.inputStream().use { it.copyTo(out) }
-        } ?: error("Não foi possível abrir o destino")
-    }
+    fun saveTo(context: Context, file: File, destination: Uri) = FileActions.saveTo(context, file, destination)
 
     private class FilePrintAdapter(private val file: File, private val name: String) : PrintDocumentAdapter() {
         override fun onLayout(

@@ -9,6 +9,7 @@ import androidx.core.app.NotificationCompat
 import com.pathfinder.MainActivity
 import com.pathfinder.R
 import com.pathfinder.navigation.NavigationService
+import com.pathfinder.net.MeshService
 
 object Notifications {
     const val CHANNEL_RECORDING = "recording"
@@ -19,6 +20,12 @@ object Notifications {
     const val CHANNEL_DEVIATION = "deviation"
     const val ID_NAVIGATION = 3
     const val ID_DEVIATION = 4
+    const val CHANNEL_NETWORK = "network"
+    const val CHANNEL_REMOTE_ALERT = "remote_alert"
+    const val CHANNEL_TRAIL_RECEIVED = "trail_received"
+    const val ID_NETWORK = 5
+    const val ID_TRAIL_RECEIVED = 6
+    const val ID_REMOTE_ALERT_BASE = 1_000
 
     fun createChannels(context: Context) {
         val manager = context.getSystemService(NotificationManager::class.java)
@@ -42,6 +49,19 @@ object Notifications {
                 setSound(null, null)
                 enableVibration(false)
             }
+        )
+        manager.createNotificationChannel(
+            NotificationChannel(CHANNEL_NETWORK, "Rede local", NotificationManager.IMPORTANCE_LOW)
+        )
+        manager.createNotificationChannel(
+            NotificationChannel(CHANNEL_REMOTE_ALERT, "Alertas dos grupos", NotificationManager.IMPORTANCE_HIGH).apply {
+                description = "Grupo fora da rota (recebido pela rede)"
+                setSound(null, null)
+                enableVibration(false)
+            }
+        )
+        manager.createNotificationChannel(
+            NotificationChannel(CHANNEL_TRAIL_RECEIVED, "Trilhas recebidas", NotificationManager.IMPORTANCE_DEFAULT)
         )
     }
 
@@ -74,6 +94,50 @@ object Notifications {
             .setContentText(detail)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
+            .setContentIntent(openTrailIntent(context, trailId, navigation = true))
+            .build()
+
+    private fun openApp(context: Context, requestCode: Int, extras: Intent.() -> Unit = {}): PendingIntent =
+        PendingIntent.getActivity(
+            context, requestCode,
+            Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP).apply(extras),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+
+    fun network(context: Context, text: String) =
+        NotificationCompat.Builder(context, CHANNEL_NETWORK)
+            .setSmallIcon(R.drawable.ic_stat_compass)
+            .setContentTitle("Rede Path Finder ativa")
+            .setContentText(text)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setContentIntent(openApp(context, 10) { putExtra(MainActivity.EXTRA_OPEN_NETWORK, true) })
+            .addAction(
+                0, "Desligar",
+                PendingIntent.getService(
+                    context, 11,
+                    Intent(context, MeshService::class.java).setAction(MeshService.ACTION_STOP),
+                    PendingIntent.FLAG_IMMUTABLE,
+                ),
+            )
+            .build()
+
+    fun remoteAlert(context: Context, title: String, text: String) =
+        NotificationCompat.Builder(context, CHANNEL_REMOTE_ALERT)
+            .setSmallIcon(R.drawable.ic_stat_compass)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_ALARM)
+            .setContentIntent(openApp(context, 12) { putExtra(MainActivity.EXTRA_OPEN_NETWORK, true) })
+            .build()
+
+    fun trailReceived(context: Context, trailId: Long, title: String, text: String) =
+        NotificationCompat.Builder(context, CHANNEL_TRAIL_RECEIVED)
+            .setSmallIcon(R.drawable.ic_stat_compass)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setAutoCancel(true)
             .setContentIntent(openTrailIntent(context, trailId, navigation = true))
             .build()
 

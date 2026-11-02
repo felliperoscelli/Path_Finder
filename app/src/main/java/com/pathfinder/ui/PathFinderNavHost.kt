@@ -10,6 +10,7 @@ import androidx.navigation.navArgument
 import com.pathfinder.ui.home.HomeScreen
 import com.pathfinder.ui.map.MapScreen
 import com.pathfinder.ui.navigate.NavigateScreen
+import com.pathfinder.ui.network.NetworkScreen
 import com.pathfinder.ui.navigate.SessionReviewScreen
 import com.pathfinder.ui.offline.OfflineMapsScreen
 import com.pathfinder.ui.points.PointsScreen
@@ -23,6 +24,7 @@ private object Routes {
     const val SESSION = "session/{sessionId}"
     const val OFFLINE = "offline"
     const val SETTINGS = "settings"
+    const val NETWORK = "network"
 
     fun map(trailId: Long? = null) = if (trailId == null) "map" else "map?trailId=$trailId"
     fun points(trailId: Long) = "points/$trailId"
@@ -34,8 +36,20 @@ private object Routes {
 data class OpenTrail(val trailId: Long, val navigation: Boolean)
 
 @Composable
-fun PathFinderNavHost(openTrail: OpenTrail? = null, onTrailOpened: () -> Unit = {}) {
+fun PathFinderNavHost(
+    openTrail: OpenTrail? = null,
+    onTrailOpened: () -> Unit = {},
+    openNetwork: Boolean = false,
+    onNetworkOpened: () -> Unit = {},
+) {
     val nav = rememberNavController()
+
+    LaunchedEffect(openNetwork) {
+        if (openNetwork) {
+            nav.navigate(Routes.NETWORK) { popUpTo(Routes.HOME); launchSingleTop = true }
+            onNetworkOpened()
+        }
+    }
 
     LaunchedEffect(openTrail) {
         if (openTrail != null) {
@@ -53,6 +67,7 @@ fun PathFinderNavHost(openTrail: OpenTrail? = null, onTrailOpened: () -> Unit = 
                 onOpenMap = { nav.navigate(Routes.map()) },
                 onOpenOfflineMaps = { nav.navigate(Routes.OFFLINE) },
                 onOpenSettings = { nav.navigate(Routes.SETTINGS) },
+                onOpenNetwork = { nav.navigate(Routes.NETWORK) },
             )
         }
         composable(
@@ -91,6 +106,9 @@ fun PathFinderNavHost(openTrail: OpenTrail? = null, onTrailOpened: () -> Unit = 
         }
         composable(Routes.OFFLINE) {
             OfflineMapsScreen(onBack = { nav.popBackStack() })
+        }
+        composable(Routes.NETWORK) {
+            NetworkScreen(onBack = { nav.popBackStack() })
         }
         composable(Routes.SETTINGS) {
             SettingsScreen(onBack = { nav.popBackStack() })

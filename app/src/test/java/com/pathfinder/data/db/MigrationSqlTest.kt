@@ -37,4 +37,11 @@ class MigrationSqlTest {
         val migration = Migrations.SQL_1_2.map(::normalize).filterNot { it.startsWith("ALTER") }
         assertEquals(expected.sorted(), migration.sorted())
     }
+
+    @Test fun uuidIndexMatchesSchema() {
+        val v3 = schema(3).getJSONArray("entities")
+        val trails = (0 until v3.length()).map(v3::getJSONObject).first { it.getString("tableName") == "trails" }
+        val index = trails.getJSONArray("indices").getJSONObject(0).getString("createSql").replace("\${TABLE_NAME}", "trails")
+        assertEquals(normalize(index), normalize(Migrations.SQL_2_3.last()))
+    }
 }

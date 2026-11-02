@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.Flow
 
 /** Pontos da trilha, percurso de criação e declinação: o que a navegação precisa. */
 data class NavigationRoute(
+    val trailUuid: String,
     val trailName: String,
     val points: List<LatLon>,
     val pointNames: List<String>,
@@ -30,6 +31,7 @@ class NavigationRepository(private val db: AppDatabase) {
         val trail = trailDao.getById(trailId) ?: return null
         val points = pointDao.getForTrail(trailId)
         return NavigationRoute(
+            trailUuid = trail.uuid,
             trailName = trail.name,
             points = points.map { LatLon(it.latitude, it.longitude) },
             pointNames = points.map { it.name },
