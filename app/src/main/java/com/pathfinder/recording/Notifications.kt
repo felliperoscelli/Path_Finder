@@ -26,6 +26,10 @@ object Notifications {
     const val ID_NETWORK = 5
     const val ID_TRAIL_RECEIVED = 6
     const val ID_REMOTE_ALERT_BASE = 1_000
+    const val CHANNEL_MESSAGES = "messages"
+    const val CHANNEL_EMERGENCY = "emergency"
+    const val ID_MESSAGE_BASE = 100_000
+    const val ID_EMERGENCY_BASE = 200_000
 
     fun createChannels(context: Context) {
         val manager = context.getSystemService(NotificationManager::class.java)
@@ -62,6 +66,19 @@ object Notifications {
         )
         manager.createNotificationChannel(
             NotificationChannel(CHANNEL_TRAIL_RECEIVED, "Trilhas recebidas", NotificationManager.IMPORTANCE_DEFAULT)
+        )
+        manager.createNotificationChannel(
+            NotificationChannel(CHANNEL_MESSAGES, "Mensagens", NotificationManager.IMPORTANCE_HIGH).apply {
+                description = "Mensagens de texto do coordenador e dos monitores"
+                enableVibration(true)
+            }
+        )
+        manager.createNotificationChannel(
+            NotificationChannel(CHANNEL_EMERGENCY, "Emergências", NotificationManager.IMPORTANCE_HIGH).apply {
+                description = "Pedido de emergência de um grupo"
+                setSound(null, null) // o alarme é tocado pelo app
+                enableVibration(false)
+            }
         )
     }
 
@@ -111,7 +128,7 @@ object Notifications {
             .setContentText(text)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
-            .setContentIntent(openApp(context, 10) { putExtra(MainActivity.EXTRA_OPEN_NETWORK, true) })
+            .setContentIntent(openApp(context, 10) { putExtra(MainActivity.EXTRA_OPEN_SCREEN, MainActivity.SCREEN_NETWORK) })
             .addAction(
                 0, "Desligar",
                 PendingIntent.getService(
@@ -129,7 +146,30 @@ object Notifications {
             .setContentText(text)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
-            .setContentIntent(openApp(context, 12) { putExtra(MainActivity.EXTRA_OPEN_NETWORK, true) })
+            .setContentIntent(openApp(context, 12) { putExtra(MainActivity.EXTRA_OPEN_SCREEN, MainActivity.SCREEN_DASHBOARD) })
+            .build()
+
+    fun message(context: Context, from: String, text: String, urgent: Boolean) =
+        NotificationCompat.Builder(context, CHANNEL_MESSAGES)
+            .setSmallIcon(R.drawable.ic_stat_compass)
+            .setContentTitle(if (urgent) "URGENTE – $from" else from)
+            .setContentText(text)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+            .setAutoCancel(true)
+            .setContentIntent(openApp(context, 13) { putExtra(MainActivity.EXTRA_OPEN_SCREEN, MainActivity.SCREEN_MESSAGES) })
+            .build()
+
+    fun emergency(context: Context, title: String, text: String) =
+        NotificationCompat.Builder(context, CHANNEL_EMERGENCY)
+            .setSmallIcon(R.drawable.ic_stat_compass)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setCategory(NotificationCompat.CATEGORY_ALARM)
+            .setOngoing(true)
+            .setContentIntent(openApp(context, 14) { putExtra(MainActivity.EXTRA_OPEN_SCREEN, MainActivity.SCREEN_DASHBOARD) })
             .build()
 
     fun trailReceived(context: Context, trailId: Long, title: String, text: String) =

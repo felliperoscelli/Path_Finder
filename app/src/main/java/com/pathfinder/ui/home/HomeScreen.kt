@@ -18,6 +18,9 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Explore
+import androidx.compose.material.icons.filled.Dashboard
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.automirrored.filled.Message
 import androidx.compose.material.icons.filled.FileOpen
 import androidx.compose.material.icons.filled.Hub
 import androidx.compose.material.icons.filled.Map
@@ -27,6 +30,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.OutlinedButton
@@ -80,6 +85,8 @@ fun HomeScreen(
     onOpenOfflineMaps: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenNetwork: () -> Unit,
+    onOpenMessages: () -> Unit,
+    onOpenDashboard: () -> Unit,
     viewModel: HomeViewModel = viewModel(factory = HomeViewModel.Factory),
 ) {
     val trails by viewModel.trailList.collectAsStateWithLifecycle()
@@ -91,6 +98,9 @@ fun HomeScreen(
     var pendingDelete by rememberSaveable { mutableStateOf<Long?>(null) }
     val network by remember { (context.applicationContext as PathFinderApp).container.nearby.state }
         .collectAsStateWithLifecycle()
+    val unread by remember { (context.applicationContext as PathFinderApp).container.chatRepository.observeUnread() }
+        .collectAsStateWithLifecycle(initialValue = 0)
+    var menu by remember { mutableStateOf(false) }
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val importer = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -117,17 +127,46 @@ fun HomeScreen(
                     }
                 },
                 actions = {
+                    if (settings.role == UserRole.COORDINATOR) {
+                        IconButton(onClick = onOpenDashboard) { Icon(Icons.Filled.Dashboard, "Painel") }
+                    }
+                    if (settings.role != UserRole.REPEATER) {
+                        IconButton(onClick = onOpenMessages) {
+                            BadgedBox(badge = { if (unread > 0) Badge { Text("$unread") } }) {
+                                Icon(Icons.AutoMirrored.Filled.Message, "Mensagens")
+                            }
+                        }
+                    }
                     IconButton(onClick = onOpenNetwork) {
                         BadgedBox(badge = {
                             if (network.running) Badge { Text("${network.connected.size}") }
                         }) { Icon(Icons.Filled.Hub, "Rede local") }
                     }
-                    IconButton(onClick = { importer.launch(arrayOf("*/*")) }) {
-                        Icon(Icons.Filled.FileOpen, "Importar trilha (.json ou .gpx)")
+                    Box {
+                        IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, "Mais opções") }
+                        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                            DropdownMenuItem(
+                                text = { Text("Importar trilha (.json/.gpx)") },
+                                leadingIcon = { Icon(Icons.Filled.FileOpen, null) },
+                                onClick = { menu = false; importer.launch(arrayOf("*/*")) },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Mapa") },
+                                leadingIcon = { Icon(Icons.Filled.Map, null) },
+                                onClick = { menu = false; onOpenMap() },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Mapas offline") },
+                                leadingIcon = { Icon(Icons.Filled.Download, null) },
+                                onClick = { menu = false; onOpenOfflineMaps() },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Configurações") },
+                                leadingIcon = { Icon(Icons.Filled.Settings, null) },
+                                onClick = { menu = false; onOpenSettings() },
+                            )
+                        }
                     }
-                    IconButton(onClick = onOpenMap) { Icon(Icons.Filled.Map, "Mapa") }
-                    IconButton(onClick = onOpenOfflineMaps) { Icon(Icons.Filled.Download, "Mapas offline") }
-                    IconButton(onClick = onOpenSettings) { Icon(Icons.Filled.Settings, "Configurações") }
                 },
             )
         },

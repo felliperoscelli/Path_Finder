@@ -8,6 +8,7 @@ data class MonitorInfo(
     val trailName: String,
     val latitude: Double,
     val longitude: Double,
+    val trailUuid: String? = null,
     val accuracyMeters: Float? = null,
     val nextIndex: Int = 0,
     val totalPoints: Int = 0,
@@ -35,12 +36,28 @@ data class RemoteAlert(
     val active: Boolean = true,
 )
 
+/** Pedido de emergência recebido; fica ativo até o coordenador marcar "ciente". */
+data class EmergencyCall(
+    val messageId: String,
+    val deviceId: String,
+    val name: String,
+    val groupName: String?,
+    val trailName: String?,
+    val latitude: Double?,
+    val longitude: Double?,
+    val time: Long,
+    val acknowledged: Boolean = false,
+)
+
 data class BoardState(
     val monitors: Map<String, MonitorInfo> = emptyMap(),
     /** Mais recentes primeiro. */
     val alerts: List<RemoteAlert> = emptyList(),
+    /** Mais recentes primeiro. */
+    val emergencies: List<EmergencyCall> = emptyList(),
 ) {
     val activeAlerts: List<RemoteAlert> get() = alerts.filter { it.active }
+    val openEmergencies: List<EmergencyCall> get() = emergencies.filterNot { it.acknowledged }
 }
 
 /**
@@ -64,6 +81,7 @@ object MonitorBoard {
                     trailName = b.trailName,
                     latitude = b.latitude,
                     longitude = b.longitude,
+                    trailUuid = b.trailUuid,
                     accuracyMeters = b.accuracyMeters,
                     nextIndex = b.nextIndex,
                     totalPoints = b.totalPoints,
@@ -110,9 +128,24 @@ object MonitorBoard {
                     ),
                 )
             }
+            is Emergency -> {
+                val call = EmergencyCall(
+                    envelope.id, device, b.monitorName, b.groupName, b.trailName, b.latitude, b.longitude, b.time,
+                )
+                val monitors = if (current != null && b.latitude != null && b.longitude != null && current.updatedAt <= b.time) {
+                    state.monitors + (device to current.copy(latitude = b.latitude, longitude = b.longitude, updatedAt = b.time))
+                } else {
+                    state.monitors
+                }
+                state.copy(monitors = monitors, emergencies = (listOf(call) + state.emergencies).take(MAX_ALERTS))
+            }
             else -> state
         }
     }
+
+    /** O coordenador marcou a emergência como vista (o alarme para). */
+    fun acknowledge(state: BoardState, messageId: String): BoardState =
+        state.copy(emergencies = state.emergencies.map { if (it.messageId == messageId) it.copy(acknowledged = true) else it })
 
     private fun List<RemoteAlert>.closeFor(device: String) =
         map { if (it.deviceId == device && it.active) it.copy(active = false) else it }

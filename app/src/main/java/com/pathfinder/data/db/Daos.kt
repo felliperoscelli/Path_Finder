@@ -99,6 +99,27 @@ interface OfflineAreaDao {
 }
 
 @Dao
+interface ChatDao {
+    @Query("SELECT * FROM chat_messages ORDER BY createdAt")
+    fun observeAll(): Flow<List<ChatMessageEntity>>
+
+    @Query("SELECT COUNT(*) FROM chat_messages WHERE read = 0")
+    fun observeUnread(): Flow<Int>
+
+    @Query("SELECT * FROM chat_messages WHERE outgoing = 0 AND read = 0 ORDER BY createdAt DESC LIMIT 1")
+    fun observeLatestUnread(): Flow<ChatMessageEntity?>
+
+    @Insert(onConflict = androidx.room.OnConflictStrategy.IGNORE)
+    suspend fun insert(message: ChatMessageEntity)
+
+    @Query("UPDATE chat_messages SET read = 1 WHERE read = 0")
+    suspend fun markAllRead()
+
+    @Query("DELETE FROM chat_messages")
+    suspend fun clear()
+}
+
+@Dao
 interface MeshMessageDao {
     @Query("SELECT COUNT(*) FROM mesh_messages WHERE id = :id")
     suspend fun exists(id: String): Int

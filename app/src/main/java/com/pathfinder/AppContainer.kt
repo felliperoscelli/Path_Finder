@@ -1,6 +1,7 @@
 package com.pathfinder
 
 import android.content.Context
+import com.pathfinder.data.ChatRepository
 import com.pathfinder.data.NavigationRepository
 import com.pathfinder.data.OfflineAreaRepository
 import com.pathfinder.data.TrailRepository
@@ -32,5 +33,6 @@ class AppContainer(context: Context) {
     private val identity = DeviceIdentity(context)
     val nearby = NearbyManager(context.applicationContext, identity, appScope)
     val mesh = MeshCore(identity.deviceId, nearby, RoomMessageStore(database), appScope)
-    val networkHub = NetworkHub(context.applicationContext, nearby, mesh, trailRepository, settingsRepository, appScope)
+    val chatRepository = ChatRepository(database)
+    val networkHub = NetworkHub(context.applicationContext, nearby, mesh, trailRepository, chatRepository, settingsRepository, appScope)
 }

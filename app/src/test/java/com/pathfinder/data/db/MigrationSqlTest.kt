@@ -55,4 +55,15 @@ class MigrationSqlTest {
         }
         assertEquals(expected.sorted(), Migrations.SQL_3_4.map(::normalize).sorted())
     }
+
+    @Test fun chatTableMatchesSchema() {
+        val v5 = schema(5).getJSONArray("entities")
+        val chat = (0 until v5.length()).map(v5::getJSONObject).first { it.getString("tableName") == "chat_messages" }
+        val expected = mutableListOf(normalize(chat.getString("createSql").replace("\${TABLE_NAME}", "chat_messages")))
+        val indices = chat.getJSONArray("indices")
+        for (i in 0 until indices.length()) {
+            expected += normalize(indices.getJSONObject(i).getString("createSql").replace("\${TABLE_NAME}", "chat_messages"))
+        }
+        assertEquals(expected.sorted(), Migrations.SQL_4_5.map(::normalize).sorted())
+    }
 }

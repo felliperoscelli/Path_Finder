@@ -177,6 +177,27 @@ class MeshMessageEntity(
     val deliveredTo: String,
 )
 
+/** Mensagem de texto ou emergência, enviada ou recebida (histórico do chat). */
+@Entity(tableName = "chat_messages", indices = [Index("createdAt")])
+data class ChatMessageEntity(
+    /** Mesmo id do envelope da rede. */
+    @PrimaryKey val id: String,
+    val fromDevice: String,
+    val fromName: String,
+    val fromRole: String,
+    val fromGroup: String? = null,
+    /** Destinatário (deviceId) ou null para todos. */
+    val toDevice: String? = null,
+    val text: String,
+    val urgent: Boolean = false,
+    val emergency: Boolean = false,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    val createdAt: Long,
+    val outgoing: Boolean,
+    val read: Boolean,
+)
+
 /** Área de mapa baixada para uso offline. */
 @Entity(tableName = "offline_areas")
 data class OfflineAreaEntity(

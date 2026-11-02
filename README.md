@@ -14,7 +14,7 @@ A especificação completa está em [`docs/especificacao.md`](docs/especificacao
 | 4 | Navegação do monitor e alerta de desvio local | ✅ |
 | 5 | Nearby Connections entre dois aparelhos | ✅ |
 | 6 | Rede em malha com repasse e armazenamento | ✅ |
-| 7 | Painel do coordenador, alertas remotos e mensagens | — |
+| 7 | Painel do coordenador, alertas remotos e mensagens | ✅ |
 | 8 | Testes de campo e ajustes de bateria | — |
 
 ## Etapa 1 – o que já funciona
@@ -161,6 +161,33 @@ Observação: a rede aceita qualquer aparelho com o Path Finder e a rede ligada 
 - A tela "Rede local" mostra os números da malha (guardadas, recebidas, repassadas, enviadas).
 - **Banco de dados v4** com a tabela das mensagens da malha, com migração.
 
+## Etapa 7 – painel do coordenador, alertas remotos e mensagens
+
+- **Painel** (perfil Coordenador, ícone na tela inicial): mapa topográfico offline com a
+  trilha (escolhida automaticamente pela que os grupos estão navegando, ou pelo menu) e
+  um ícone por grupo com o nome, na cor do estado: verde na rota, laranja afastado,
+  vermelho fora da rota, cinza sem notícias há mais de 3 min. Tocar no ícone mostra o
+  monitor, o último ponto alcançado e há quanto tempo veio a última atualização. Embaixo,
+  a lista de grupos com progresso; tocar centraliza o mapa.
+- **Alertas no topo do painel**, com som e vibração: emergências e grupos fora da rota,
+  com grupo, última posição e tempo fora da rota. Botões: ver no mapa, **responder**
+  (respostas rápidas como "Recebido! Aguardem, resgate a caminho" ou texto livre, enviadas
+  só para aquele monitor), silenciar o desvio e "Ciente" na emergência.
+- **Indicador de rede** no painel: "Malha · N" com o número de aparelhos conectados.
+- **Mensagens** (todos os perfis, menos Repetidor): conversa com mensagens gerais ou
+  individuais (escolha do destinatário entre os aparelhos conhecidos, ou "Responder só
+  para…"). Histórico guardado no aparelho; contador de não lidas na tela inicial e na
+  navegação. Mensagens recebidas geram notificação.
+- **Alertas rápidos** do monitor: "Grupo perdido" e "Precisamos de ajuda" (urgentes:
+  prioridade de alerta e alarme no coordenador), "Chegamos ao ponto" e "Tudo certo",
+  todos com a posição. O coordenador tem respostas rápidas próprias.
+- **Botão de emergência** (na tela de mensagens e, durante a navegação, no canto da tela):
+  pede confirmação e envia um alerta prioritário com a posição. No coordenador o alarme
+  repete a cada 30 s até tocar em "Ciente". Sem conexão, a emergência fica guardada e
+  sai assim que houver um aparelho por perto.
+- A última mensagem não lida aparece também na tela de navegação do monitor.
+- **Banco de dados v5** com o histórico de mensagens, com migração.
+
 ## Como compilar
 
 Requisitos: JDK 17+ e Android SDK (platform 35). Abra a pasta no Android Studio ou:
@@ -178,10 +205,11 @@ app/src/main/java/com/pathfinder/
 ├── data/                                # Room, repositórios e configurações
 ├── geo/                                 # UTM, Vincenty, declinação, detecção de parada
 ├── navigation/                          # regras da navegação, alarme e serviço do monitor
+├── location/                            # posição atual para mensagens e emergência
 ├── map/                                 # OpenTopoMap, cálculo de tiles e download offline
 ├── pdf/                                 # conteúdo e desenho da ficha, imprimir/compartilhar
 ├── net/                                 # Nearby Connections, protocolo, painel de monitores
 ├── recording/                           # serviço de gravação pelo GPS e notificações
 ├── transfer/                            # trilha em JSON/GPX, exportar e importar
-└── ui/                                  # telas Compose (home, map, points, navigate, network, offline, settings)
+└── ui/                                  # telas Compose (home, map, points, navigate, dashboard, messages, network, offline, settings)
 ```

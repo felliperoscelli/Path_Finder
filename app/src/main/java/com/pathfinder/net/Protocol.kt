@@ -105,6 +105,36 @@ data class PointReached(
     val monitorName: String,
 ) : Body
 
+/**
+ * Mensagem de texto (geral ou individual, conforme [Envelope.to]).
+ * [urgent] = alerta rápido como "Grupo perdido": vai com prioridade e toca
+ * o alarme do coordenador.
+ */
+@Serializable
+@SerialName("text")
+data class TextMessage(
+    val text: String,
+    val senderRole: String,
+    val senderGroup: String? = null,
+    val urgent: Boolean = false,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+) : Body
+
+/** Botão de emergência: alerta prioritário com a posição de quem pediu. */
+@Serializable
+@SerialName("emergency")
+data class Emergency(
+    val time: Long,
+    val senderRole: String,
+    val monitorName: String,
+    val groupName: String? = null,
+    val trailName: String? = null,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    val accuracyMeters: Float? = null,
+) : Body
+
 /** Codificação das mensagens: JSON compactado com GZIP. */
 object Wire {
     fun encode(envelope: Envelope): ByteArray {

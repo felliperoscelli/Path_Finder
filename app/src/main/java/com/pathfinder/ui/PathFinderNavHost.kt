@@ -7,7 +7,10 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.pathfinder.MainActivity
+import com.pathfinder.ui.dashboard.DashboardScreen
 import com.pathfinder.ui.home.HomeScreen
+import com.pathfinder.ui.messages.MessagesScreen
 import com.pathfinder.ui.map.MapScreen
 import com.pathfinder.ui.navigate.NavigateScreen
 import com.pathfinder.ui.network.NetworkScreen
@@ -25,6 +28,10 @@ private object Routes {
     const val OFFLINE = "offline"
     const val SETTINGS = "settings"
     const val NETWORK = "network"
+    const val MESSAGES = "messages?to={to}"
+    const val DASHBOARD = "dashboard"
+
+    fun messages(to: String? = null) = if (to == null) "messages" else "messages?to=$to"
 
     fun map(trailId: Long? = null) = if (trailId == null) "map" else "map?trailId=$trailId"
     fun points(trailId: Long) = "points/$trailId"
@@ -39,15 +46,21 @@ data class OpenTrail(val trailId: Long, val navigation: Boolean)
 fun PathFinderNavHost(
     openTrail: OpenTrail? = null,
     onTrailOpened: () -> Unit = {},
-    openNetwork: Boolean = false,
-    onNetworkOpened: () -> Unit = {},
+    openScreen: String? = null,
+    onScreenOpened: () -> Unit = {},
 ) {
     val nav = rememberNavController()
 
-    LaunchedEffect(openNetwork) {
-        if (openNetwork) {
-            nav.navigate(Routes.NETWORK) { popUpTo(Routes.HOME); launchSingleTop = true }
-            onNetworkOpened()
+    LaunchedEffect(openScreen) {
+        val route = when (openScreen) {
+            MainActivity.SCREEN_NETWORK -> Routes.NETWORK
+            MainActivity.SCREEN_MESSAGES -> Routes.messages()
+            MainActivity.SCREEN_DASHBOARD -> Routes.DASHBOARD
+            else -> null
+        }
+        if (route != null) {
+            nav.navigate(route) { popUpTo(Routes.HOME); launchSingleTop = true }
+            onScreenOpened()
         }
     }
 
@@ -68,6 +81,8 @@ fun PathFinderNavHost(
                 onOpenOfflineMaps = { nav.navigate(Routes.OFFLINE) },
                 onOpenSettings = { nav.navigate(Routes.SETTINGS) },
                 onOpenNetwork = { nav.navigate(Routes.NETWORK) },
+                onOpenMessages = { nav.navigate(Routes.messages()) },
+                onOpenDashboard = { nav.navigate(Routes.DASHBOARD) },
             )
         }
         composable(
@@ -90,6 +105,7 @@ fun PathFinderNavHost(
                 trailId = entry.arguments!!.getLong("trailId"),
                 onBack = { nav.popBackStack() },
                 onOpenSession = { nav.navigate(Routes.session(it)) },
+                onOpenMessages = { nav.navigate(Routes.messages()) },
             )
         }
         composable(
@@ -106,6 +122,23 @@ fun PathFinderNavHost(
         }
         composable(Routes.OFFLINE) {
             OfflineMapsScreen(onBack = { nav.popBackStack() })
+        }
+        composable(
+            Routes.MESSAGES,
+            arguments = listOf(navArgument("to") { type = NavType.StringType; nullable = true; defaultValue = null }),
+        ) { entry ->
+            MessagesScreen(
+                initialTo = entry.arguments?.getString("to"),
+                onBack = { nav.popBackStack() },
+                onOpenNetwork = { nav.navigate(Routes.NETWORK) },
+            )
+        }
+        composable(Routes.DASHBOARD) {
+            DashboardScreen(
+                onBack = { nav.popBackStack() },
+                onOpenMessages = { nav.navigate(Routes.messages(it)) },
+                onOpenNetwork = { nav.navigate(Routes.NETWORK) },
+            )
         }
         composable(Routes.NETWORK) {
             NetworkScreen(onBack = { nav.popBackStack() })

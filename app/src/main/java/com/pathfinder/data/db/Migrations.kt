@@ -56,5 +56,21 @@ object Migrations {
         "CREATE INDEX IF NOT EXISTS `index_mesh_messages_expiresAt` ON `mesh_messages` (`expiresAt`)",
     )
 
-    val ALL = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+    /** v5: histórico de mensagens de texto e emergências. */
+    val MIGRATION_4_5 = object : Migration(4, 5) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            SQL_4_5.forEach(db::execSQL)
+        }
+    }
+
+    internal val SQL_4_5 = listOf(
+        "CREATE TABLE IF NOT EXISTS `chat_messages` (`id` TEXT NOT NULL, `fromDevice` TEXT NOT NULL, " +
+            "`fromName` TEXT NOT NULL, `fromRole` TEXT NOT NULL, `fromGroup` TEXT, `toDevice` TEXT, " +
+            "`text` TEXT NOT NULL, `urgent` INTEGER NOT NULL, `emergency` INTEGER NOT NULL, `latitude` REAL, " +
+            "`longitude` REAL, `createdAt` INTEGER NOT NULL, `outgoing` INTEGER NOT NULL, `read` INTEGER NOT NULL, " +
+            "PRIMARY KEY(`id`))",
+        "CREATE INDEX IF NOT EXISTS `index_chat_messages_createdAt` ON `chat_messages` (`createdAt`)",
+    )
+
+    val ALL = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
 }

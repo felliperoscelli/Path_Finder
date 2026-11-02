@@ -14,8 +14,9 @@ import androidx.room.RoomDatabase
         NavigationSessionEntity::class,
         DeviationEventEntity::class,
         MeshMessageEntity::class,
+        ChatMessageEntity::class,
     ],
-    version = 4,
+    version = 5,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -25,6 +26,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun offlineAreaDao(): OfflineAreaDao
     abstract fun navigationDao(): NavigationDao
     abstract fun meshMessageDao(): MeshMessageDao
+    abstract fun chatDao(): ChatDao
 
     companion object {
         fun build(context: Context): AppDatabase =

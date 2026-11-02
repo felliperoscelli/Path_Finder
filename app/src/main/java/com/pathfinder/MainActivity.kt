@@ -15,8 +15,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 class MainActivity : ComponentActivity() {
     /** Trilha a abrir quando o app é aberto por uma notificação. */
     private val trailToOpen = MutableStateFlow<OpenTrail?>(null)
-    /** Abrir a tela da rede (notificação da rede ou de alerta de grupo). */
-    private val networkToOpen = MutableStateFlow(false)
+    /** Tela a abrir por uma notificação (rede, mensagens, painel). */
+    private val screenToOpen = MutableStateFlow<String?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -24,13 +24,13 @@ class MainActivity : ComponentActivity() {
         if (savedInstanceState == null) handleIntent(intent)
         setContent {
             val openTrail by trailToOpen.collectAsStateWithLifecycle()
-            val openNetwork by networkToOpen.collectAsStateWithLifecycle()
+            val openScreen by screenToOpen.collectAsStateWithLifecycle()
             PathFinderTheme {
                 PathFinderNavHost(
                     openTrail = openTrail,
                     onTrailOpened = { trailToOpen.value = null },
-                    openNetwork = openNetwork,
-                    onNetworkOpened = { networkToOpen.value = false },
+                    openScreen = openScreen,
+                    onScreenOpened = { screenToOpen.value = null },
                 )
             }
         }
@@ -42,8 +42,8 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleIntent(intent: Intent?) {
-        if (intent?.getBooleanExtra(EXTRA_OPEN_NETWORK, false) == true) {
-            networkToOpen.value = true
+        intent?.getStringExtra(EXTRA_OPEN_SCREEN)?.let {
+            screenToOpen.value = it
             return
         }
         val id = intent?.getLongExtra(EXTRA_OPEN_TRAIL_ID, -1L) ?: -1L
@@ -53,6 +53,9 @@ class MainActivity : ComponentActivity() {
     companion object {
         const val EXTRA_OPEN_TRAIL_ID = "openTrailId"
         const val EXTRA_OPEN_NAVIGATION = "openNavigation"
-        const val EXTRA_OPEN_NETWORK = "openNetwork"
+        const val EXTRA_OPEN_SCREEN = "openScreen"
+        const val SCREEN_NETWORK = "network"
+        const val SCREEN_MESSAGES = "messages"
+        const val SCREEN_DASHBOARD = "dashboard"
     }
 }

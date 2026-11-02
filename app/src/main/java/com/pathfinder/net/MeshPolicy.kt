@@ -13,6 +13,7 @@ object MeshPolicy {
         is PositionUpdate -> 15 * MINUTE
         is PointReached -> 2 * HOUR
         is DeviationAlert, is BackOnRoute -> 6 * HOUR
+        is TextMessage, is Emergency -> 6 * HOUR
         is TrailShare -> 24 * HOUR
     }
 
@@ -24,7 +25,7 @@ object MeshPolicy {
         is PositionUpdate -> "pos:${envelope.origin}"
         is DeviationAlert -> "dev:${envelope.origin}:${b.since}"
         is TrailShare -> "trail:${b.trail.uuid}"
-        is BackOnRoute, is PointReached -> null
+        is BackOnRoute, is PointReached, is TextMessage, is Emergency -> null
     }
 
     /** Validade contada a partir do mais antigo entre criação e agora (tolera relógios adiantados). */

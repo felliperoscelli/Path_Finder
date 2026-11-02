@@ -53,4 +53,15 @@ class MonitorBoardTest {
         assertEquals("Final", m.lastReachedName)
         assertTrue(m.finished)
     }
+
+    @Test fun emergencyStaysOpenUntilAcknowledged() {
+        var s = MonitorBoard.reduce(BoardState(), env("d1", pos(100)))
+        val e = env("d1", Emergency(150, "MONITOR", "João", "Águias", "Pista", -17.8, -48.7, 5f), id = "e1")
+        s = MonitorBoard.reduce(s, e)
+        assertEquals(1, s.openEmergencies.size)
+        assertEquals(-17.8, s.monitors.getValue("d1").latitude, 0.0) // posição atualizada
+        s = MonitorBoard.acknowledge(s, "e1")
+        assertTrue(s.openEmergencies.isEmpty())
+        assertEquals(1, s.emergencies.size)
+    }
 }

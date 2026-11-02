@@ -15,6 +15,9 @@ class WireTest {
             DeviationAlert(-17.7, -48.6, 10, 5, 45.0, "Pista", "Águias", "João", repeat = true),
             BackOnRoute(20, 5, 52.0, "Águias", "João"),
             PointReached(30, 2, "Pedra", 7, "Pista", "Águias", "João"),
+            TextMessage("Aguardem, resgate a caminho", "COORDINATOR"),
+            TextMessage("Grupo perdido", "MONITOR", "Águias", urgent = true, latitude = -17.7, longitude = -48.6),
+            Emergency(40, "MONITOR", "João", "Águias", "Pista", -17.7, -48.6, 8f),
             TrailShare(TrailPackage(uuid = "u", name = "Pista", createdAt = 0, deviationDistanceMeters = 30,
                 deviationTimeSeconds = 300, points = listOf(PackagePoint("A", "", 1.0, 2.0)))),
         )

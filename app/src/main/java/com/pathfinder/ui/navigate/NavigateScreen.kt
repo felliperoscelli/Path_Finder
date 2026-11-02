@@ -71,7 +71,12 @@ import com.pathfinder.geo.Formats
 import com.pathfinder.navigation.NavigationRuntime
 import com.pathfinder.navigation.NavigationState
 import com.pathfinder.navigation.NavigationStatus
+import com.pathfinder.PathFinderApp
 import com.pathfinder.recording.RecordingSession
+import com.pathfinder.ui.components.EmergencyButton
+import androidx.compose.material.icons.automirrored.filled.Message
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import com.pathfinder.ui.components.TopoMap
 import com.pathfinder.ui.components.centerOnMe
 import com.pathfinder.ui.components.rememberLocationPermission
@@ -98,6 +103,7 @@ fun NavigateScreen(
     trailId: Long,
     onBack: () -> Unit,
     onOpenSession: (Long) -> Unit,
+    onOpenMessages: () -> Unit,
     viewModel: NavigateViewModel = viewModel(key = "nav-$trailId", factory = NavigateViewModel.factory(trailId)),
 ) {
     val context = LocalContext.current
@@ -108,6 +114,9 @@ fun NavigateScreen(
     val sessions by viewModel.sessions.collectAsStateWithLifecycle()
     val settings by viewModel.appSettings.collectAsStateWithLifecycle()
     val recording by RecordingSession.state.collectAsStateWithLifecycle()
+    val chat = remember { (context.applicationContext as PathFinderApp).container.chatRepository }
+    val unread by chat.observeUnread().collectAsStateWithLifecycle(initialValue = 0)
+    val latestUnread by chat.observeLatestUnread().collectAsStateWithLifecycle(initialValue = null)
 
     val mapView = rememberTopoMapView()
     val permission = rememberLocationPermission()
@@ -174,6 +183,11 @@ fun NavigateScreen(
                     IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Voltar") }
                 },
                 actions = {
+                    IconButton(onClick = onOpenMessages) {
+                        BadgedBox(badge = { if (unread > 0) Badge { Text("$unread") } }) {
+                            Icon(Icons.AutoMirrored.Filled.Message, "Mensagens")
+                        }
+                    }
                     IconButton(onClick = { trailLayer.zoomToTrail() }) {
                         Icon(Icons.Filled.CenterFocusStrong, "Ver trilha inteira")
                     }
@@ -226,7 +240,24 @@ fun NavigateScreen(
                 ) {
                     NextPointCard(trail!!, status, runtime)
                     RouteStatusBanner(status, onSilence = { NavigationRuntime.silence(context) })
+                    latestUnread?.let { m ->
+                        // Última mensagem não lida (ex.: resposta do coordenador).
+                        Surface(
+                            color = MaterialTheme.colorScheme.tertiaryContainer,
+                            shape = MaterialTheme.shapes.medium,
+                            shadowElevation = 4.dp,
+                            modifier = Modifier.fillMaxWidth().clickable(onClick = onOpenMessages),
+                        ) {
+                            Column(Modifier.padding(12.dp)) {
+                                Text(m.fromName, style = MaterialTheme.typography.labelMedium)
+                                Text(m.text, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
                 }
+            }
+            if (activeHere) {
+                EmergencyButton(Modifier.align(Alignment.BottomStart).padding(12.dp), compact = true)
             }
         }
     }
