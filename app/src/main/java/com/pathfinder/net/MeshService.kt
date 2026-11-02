@@ -28,6 +28,12 @@ class MeshService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         goForeground("Ligando a rede…")
+        if (intent?.action == ACTION_RESTART) {
+            // Novo código do evento ou nome: religa a rede com os dados atuais.
+            watcher?.cancel()
+            watcher = null
+            container.nearby.stop()
+        }
         if (intent?.action == ACTION_STOP) {
             container.nearby.stop()
             ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
@@ -37,7 +43,8 @@ class MeshService : Service() {
         if (watcher == null) {
             watcher = scope.launch {
                 val s = container.settingsRepository.current()
-                container.nearby.start(s.userName, s.role.name)
+                container.mesh.eventCode = EventCode.normalize(s.eventCode)
+                container.nearby.start(s.userName, s.role.name, s.eventCode)
                 container.nearby.state.collect { state ->
                     val n = state.connected.size
                     val text = when {
@@ -72,6 +79,14 @@ class MeshService : Service() {
 
     companion object {
         const val ACTION_STOP = "com.pathfinder.net.STOP"
+        const val ACTION_RESTART = "com.pathfinder.net.RESTART"
+
+        /** Religa a rede, se estiver ligada (ex.: depois de mudar o código do evento). */
+        fun restartIfRunning(context: Context, running: Boolean) {
+            if (running) {
+                ContextCompat.startForegroundService(context, Intent(context, MeshService::class.java).setAction(ACTION_RESTART))
+            }
+        }
 
         fun start(context: Context) =
             ContextCompat.startForegroundService(context, Intent(context, MeshService::class.java))

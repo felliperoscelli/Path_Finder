@@ -20,6 +20,10 @@ import androidx.compose.material.icons.filled.CenterFocusStrong
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Explore
+import androidx.compose.material.icons.filled.Keyboard
+import androidx.compose.material3.OutlinedIconButton
+import com.pathfinder.data.settings.CoordinateFormat
+import com.pathfinder.ui.components.CoordinateEntryDialog
 import androidx.compose.material.icons.filled.FiberManualRecord
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Stop
@@ -58,6 +62,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.pathfinder.data.db.TrailWithPoints
+import com.pathfinder.data.db.isBase
 import com.pathfinder.geo.Formats
 import com.pathfinder.navigation.NavigationRuntime
 import com.pathfinder.recording.RecordingSession
@@ -107,6 +112,7 @@ fun MapScreen(
     LaunchedEffect(editing) { trailLayer.editing = editing }
     var framedTrail by rememberSaveable { mutableStateOf(false) }
     var draft by rememberSaveable(stateSaver = PointDraftSaver) { mutableStateOf<PointDraft?>(null) }
+    var typingPoint by rememberSaveable { mutableStateOf(false) }
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
@@ -199,6 +205,7 @@ fun MapScreen(
                     onStart = ::startRecording,
                     onStop = { RecordingSession.stop(context) },
                     onMarkPoint = ::markPointHere,
+                    onTypePoint = { typingPoint = true },
                 )
             }
         },
@@ -254,6 +261,19 @@ fun MapScreen(
         )
     }
 
+    if (typingPoint) {
+        CoordinateEntryDialog(
+            title = "Novo ponto por coordenadas",
+            initial = null,
+            preferUtm = format == CoordinateFormat.UTM,
+            onConfirm = {
+                typingPoint = false
+                draft = PointDraft(it.latitude, it.longitude, null, "Coordenada digitada")
+            },
+            onDismiss = { typingPoint = false },
+        )
+    }
+
     draft?.let { d ->
         val points = trail?.orderedPoints.orEmpty()
         NewPointDialog(
@@ -277,6 +297,7 @@ fun MapScreen(
             point = selected,
             format = format,
             declinationDegrees = trail?.trail?.declinationDegrees,
+            isBase = trail?.trail?.isBase(selected) == true,
             onSave = { name, notes, photo ->
                 viewModel.updatePoint(selected.id, name, notes, photo)
                 selectedPointId = null
@@ -285,6 +306,11 @@ fun MapScreen(
                 viewModel.deletePoint(selected.id)
                 selectedPointId = null
             },
+            onMoveTo = {
+                viewModel.movePoint(selected.id, it.latitude, it.longitude)
+                selectedPointId = null
+            },
+            onSetBase = { viewModel.setBase(selected.latitude, selected.longitude) },
             onDismiss = { selectedPointId = null },
         )
     }
@@ -299,6 +325,7 @@ private fun RecordingPanel(
     onStart: () -> Unit,
     onStop: () -> Unit,
     onMarkPoint: () -> Unit,
+    onTypePoint: () -> Unit,
 ) {
     Surface(tonalElevation = 3.dp, shadowElevation = 6.dp) {
         Column(
@@ -352,6 +379,9 @@ private fun RecordingPanel(
                 Button(onClick = onMarkPoint, modifier = Modifier.weight(1f)) {
                     Icon(Icons.Filled.AddLocationAlt, null)
                     Text(" Marcar ponto")
+                }
+                OutlinedIconButton(onClick = onTypePoint) {
+                    Icon(Icons.Filled.Keyboard, "Digitar coordenadas")
                 }
             }
         }

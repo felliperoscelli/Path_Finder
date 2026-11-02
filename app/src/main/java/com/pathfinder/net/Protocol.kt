@@ -34,6 +34,8 @@ data class Envelope(
     val priority: Int = Priority.NORMAL,
     /** deviceId do destinatário, ou null para todos. Os outros aparelhos só repassam. */
     val to: String? = null,
+    /** Código do evento (normalizado); mensagens de outro evento são descartadas. */
+    val event: String = "",
     val body: Body,
 )
 
@@ -64,6 +66,12 @@ data class PositionUpdate(
     val offRouteSince: Long? = null,
     val alarm: Boolean = false,
     val finished: Boolean = false,
+    /** Bateria do celular do monitor (%). */
+    val batteryPercent: Int? = null,
+    /** Hora limite desta navegação (epoch ms), se a trilha tiver uma. */
+    val deadlineAt: Long? = null,
+    /** O grupo está voltando à base. */
+    val returningToBase: Boolean = false,
 ) : Body
 
 /** Monitor → coordenador: alarme de desvio disparou (ou repetiu). */
@@ -134,6 +142,32 @@ data class Emergency(
     val longitude: Double? = null,
     val accuracyMeters: Float? = null,
 ) : Body
+
+/**
+ * Monitor → coordenador: a navegação terminou. Leva o resumo para o
+ * resultado do evento (tempos de chegada a cada ponto, alertas, tempo fora
+ * da rota).
+ */
+@Serializable
+@SerialName("navigation_ended")
+data class NavigationEnded(
+    val time: Long,
+    val trailUuid: String,
+    val trailName: String,
+    val groupName: String,
+    val monitorName: String,
+    val startedAt: Long,
+    /** Índice do ponto → hora em que foi alcançado. */
+    val reachedTimes: Map<Int, Long>,
+    val totalPoints: Int,
+    val deviationAlerts: Int,
+    val offRouteMillis: Long,
+) : Body
+
+/** Coordenador → monitor(es): voltar à base (o app do monitor passa a guiar até lá). */
+@Serializable
+@SerialName("return_to_base")
+data class ReturnToBase(val reason: String = "") : Body
 
 /** Codificação das mensagens: JSON compactado com GZIP. */
 object Wire {

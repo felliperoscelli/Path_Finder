@@ -188,6 +188,40 @@ Observação: a rede aceita qualquer aparelho com o Path Finder e a rede ligada 
 - A última mensagem não lida aparece também na tela de navegação do monitor.
 - **Banco de dados v5** com o histórico de mensagens, com migração.
 
+## Recursos extras (segurança, criação de pistas e campo)
+
+1. **Código do evento** (Configurações → Evento): só celulares com o mesmo código formam a
+   rede. O código entra no identificador da Nearby (eventos diferentes nem se enxergam) e em
+   cada mensagem (mensagens de outro evento não são entregues nem repassadas). Aplicar um
+   código novo religa a rede.
+   **PIN do coordenador**: com um PIN definido, trocar o perfil para Coordenador pede o PIN
+   (guardado só como hash); trocar ou remover o PIN pede o atual.
+2. **Bateria e "sem notícias"**: cada posição leva a bateria do celular do monitor, mostrada
+   no painel e na lista de grupos. O coordenador recebe alarme quando um grupo fica sem
+   notícias pelo tempo configurado (padrão 10 min; contado pelo relógio do coordenador, para
+   não depender do relógio do monitor) e aviso de bateria baixa (≤ 15%). O monitor vê um
+   aviso com bateria ≤ 20%. Ao encerrar, o monitor avisa o coordenador, e o grupo sai da vigia.
+3. **Hora limite** (editar trilha): os grupos recebem aviso 30 min antes e alarme na hora,
+   com botão para voltar à base; o coordenador recebe alarme para cada grupo que não terminou.
+4. **Coordenadas digitadas**: botão de teclado no mapa da trilha cria um ponto digitando
+   lat/long (decimal, graus-minutos-segundos, N/S/L/O) ou UTM (zona, hemisfério, E, N), com a
+   conversão mostrada antes de confirmar. No ponto, "Corrigir coordenadas" muda a posição.
+   **Declinação manual** (editar trilha): usa o valor da carta e recalcula os azimutes.
+5. **Modo desafio** (editar trilha): o monitor não vê distância, direção, seta, linha da
+   trilha nem os pontos ainda não alcançados; o app só avisa a chegada e o desvio.
+6. **Resultado** (troféu na lista de pontos ou "Resultado" na navegação): classificação pelo
+   tempo total (do ponto 1 ao último), tempos por trecho, alertas e tempo fora da rota. Os
+   monitores enviam o resumo ao encerrar, então o coordenador vê todos os grupos. Relatório
+   em PDF para imprimir ou compartilhar.
+7. **Tela acesa** durante a navegação (configurável) e **alto contraste** com letras maiores
+   para ler no sol (Configurações → Tela).
+8. **Voltar à base**: botão "Base" na navegação, pela hora limite ou a pedido do coordenador
+   (no painel: "Responder" → "Mandar voltar à base", ou para todos no menu de trilhas). O app
+   guia até a base (definida no ponto com "Usar como base", ou a partida), com distância,
+   azimute e seta mesmo no modo desafio, e pausa o alerta de desvio. Dá para retomar a trilha.
+
+**Banco de dados v6**, com migração verificada a partir de todas as versões anteriores.
+
 ## Como compilar
 
 Requisitos: JDK 17+ e Android SDK (platform 35). Abra a pasta no Android Studio ou:
@@ -209,7 +243,8 @@ app/src/main/java/com/pathfinder/
 ├── map/                                 # OpenTopoMap, cálculo de tiles e download offline
 ├── pdf/                                 # conteúdo e desenho da ficha, imprimir/compartilhar
 ├── net/                                 # Nearby Connections, protocolo, painel de monitores
+├── results/                             # resultado: classificação, tempos por trecho e PDF
 ├── recording/                           # serviço de gravação pelo GPS e notificações
 ├── transfer/                            # trilha em JSON/GPX, exportar e importar
-└── ui/                                  # telas Compose (home, map, points, navigate, dashboard, messages, network, offline, settings)
+└── ui/                                  # telas Compose (home, map, points, navigate, dashboard, messages, results, network, offline, settings)
 ```

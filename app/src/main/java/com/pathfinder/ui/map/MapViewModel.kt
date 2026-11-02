@@ -100,6 +100,11 @@ class MapViewModel(
         viewModelScope.launch { trails.movePoint(pointId, latitude, longitude) }
     }
 
+    fun setBase(latitude: Double, longitude: Double) {
+        val id = trailId ?: return
+        viewModelScope.launch { trails.setBase(id, latitude, longitude) }
+    }
+
     fun deletePoint(pointId: Long) {
         viewModelScope.launch { trails.deletePoint(pointId) }
     }

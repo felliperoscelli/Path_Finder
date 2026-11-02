@@ -52,6 +52,9 @@ class MeshCore(
     /** Nome deste aparelho nas mensagens criadas aqui. */
     @Volatile var localName: String = ""
 
+    /** Código do evento (normalizado). Mensagens de outro evento são ignoradas. */
+    @Volatile var eventCode: String = ""
+
     private val _delivered = MutableSharedFlow<Envelope>(extraBufferCapacity = 256)
     /** Mensagens para este aparelho (novas, sem cópias). */
     val delivered: SharedFlow<Envelope> = _delivered.asSharedFlow()
@@ -75,6 +78,7 @@ class MeshCore(
             createdAt = clock(),
             priority = priority,
             to = to,
+            event = eventCode,
             body = body,
         )
         lock.withLock { seen[envelope.id] = Unit }
@@ -99,6 +103,7 @@ class MeshCore(
             return
         }
         if (envelope.origin == myDeviceId) return
+        if (envelope.event != eventCode) return // outro evento: nem entrega nem repassa
         _stats.update { it.copy(received = it.received + 1) }
 
         if (envelope.to == null || envelope.to == myDeviceId) _delivered.emit(envelope)

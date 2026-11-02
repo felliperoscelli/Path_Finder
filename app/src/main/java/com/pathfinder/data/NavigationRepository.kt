@@ -19,6 +19,21 @@ data class NavigationRoute(
     val declinationDegrees: Double,
     val deviationDistanceMeters: Int,
     val deviationTimeSeconds: Int,
+    val deadlineMinutes: Int?,
+    val challengeMode: Boolean,
+    /** Base para "voltar à base": a definida na trilha ou o ponto de partida. */
+    val base: LatLon?,
+)
+
+/** Resumo de um percurso recebido pela rede. */
+data class RemoteSummary(
+    val groupName: String,
+    val monitorName: String,
+    val startedAt: Long,
+    val endedAt: Long,
+    val reachedTimes: Map<Int, Long>,
+    val deviationAlerts: Int,
+    val offRouteMillis: Long,
 )
 
 class NavigationRepository(private val db: AppDatabase) {
@@ -39,6 +54,13 @@ class NavigationRepository(private val db: AppDatabase) {
             declinationDegrees = trail.declinationDegrees ?: 0.0,
             deviationDistanceMeters = trail.deviationDistanceMeters,
             deviationTimeSeconds = trail.deviationTimeSeconds,
+            deadlineMinutes = trail.deadlineMinutes,
+            challengeMode = trail.challengeMode,
+            base = if (trail.baseLatitude != null && trail.baseLongitude != null) {
+                LatLon(trail.baseLatitude, trail.baseLongitude)
+            } else {
+                points.firstOrNull()?.let { LatLon(it.latitude, it.longitude) }
+            },
         )
     }
 
@@ -64,14 +86,47 @@ class NavigationRepository(private val db: AppDatabase) {
 
     fun observeDeviations(sessionId: Long): Flow<List<DeviationEventEntity>> = dao.observeDeviations(sessionId)
 
-    suspend fun saveProgress(sessionId: Long, nextIndex: Int, reached: Set<Int>) {
+    suspend fun saveProgress(sessionId: Long, nextIndex: Int, reached: Set<Int>, reachedTimes: Map<Int, Long> = emptyMap()) {
         val s = dao.getSession(sessionId) ?: return
-        dao.updateSession(s.copy(nextPointIndex = nextIndex, reachedPoints = reached.sorted().joinToString(",")))
+        val times = s.reachedTimeMap + reachedTimes.filterKeys { it !in s.reachedTimeMap }
+        dao.updateSession(
+            s.copy(
+                nextPointIndex = nextIndex,
+                reachedPoints = reached.sorted().joinToString(","),
+                reachedTimes = NavigationSessionEntity.encodeTimes(times.filterKeys { it in reached }),
+            )
+        )
     }
 
-    suspend fun finishSession(sessionId: Long) {
-        val s = dao.getSession(sessionId) ?: return
-        if (s.endedAt == null) dao.updateSession(s.copy(endedAt = System.currentTimeMillis()))
+    /** Encerra a sessão e calcula o tempo total fora da rota. Retorna a sessão final. */
+    suspend fun finishSession(sessionId: Long): NavigationSessionEntity? {
+        val s = dao.getSession(sessionId) ?: return null
+        if (s.endedAt != null) return s
+        val now = System.currentTimeMillis()
+        val offRoute = dao.deviations(sessionId).sumOf { (it.endedAt ?: now) - it.startedAt }
+        return s.copy(endedAt = now, offRouteMillis = offRoute).also { dao.updateSession(it) }
+    }
+
+    suspend fun finishedSessions(trailId: Long) = dao.finishedSessions(trailId)
+
+    /** Guarda (ou atualiza) o resumo de um percurso feito em outro aparelho. */
+    suspend fun saveRemoteSession(trailId: Long, device: String, summary: RemoteSummary) {
+        val existing = dao.findRemote(device, summary.startedAt)
+        val entity = NavigationSessionEntity(
+            id = existing?.id ?: 0,
+            trailId = trailId,
+            groupName = summary.groupName,
+            monitorName = summary.monitorName,
+            startedAt = summary.startedAt,
+            endedAt = summary.endedAt,
+            nextPointIndex = summary.reachedTimes.keys.maxOrNull()?.plus(1) ?: 0,
+            reachedPoints = summary.reachedTimes.keys.sorted().joinToString(","),
+            deviationAlerts = summary.deviationAlerts,
+            reachedTimes = NavigationSessionEntity.encodeTimes(summary.reachedTimes),
+            offRouteMillis = summary.offRouteMillis,
+            remoteDevice = device,
+        )
+        if (existing == null) dao.insertSession(entity) else dao.updateSession(entity)
     }
 
     suspend fun addTrackPoint(point: TrackPointEntity) {

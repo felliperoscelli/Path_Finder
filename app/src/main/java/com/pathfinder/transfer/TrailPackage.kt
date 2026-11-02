@@ -22,6 +22,12 @@ data class TrailPackage(
     val points: List<PackagePoint>,
     /** Percurso gravado na criação (usado como rota alternativa no alerta de desvio). */
     val track: List<PackageTrackPoint> = emptyList(),
+    val declinationManual: Boolean = false,
+    /** Hora limite do dia em minutos desde 0h. */
+    val deadlineMinutes: Int? = null,
+    val challengeMode: Boolean = false,
+    val baseLatitude: Double? = null,
+    val baseLongitude: Double? = null,
 ) {
     companion object {
         const val FORMAT = "pathfinder-trail"

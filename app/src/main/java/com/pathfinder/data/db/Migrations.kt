@@ -72,5 +72,26 @@ object Migrations {
         "CREATE INDEX IF NOT EXISTS `index_chat_messages_createdAt` ON `chat_messages` (`createdAt`)",
     )
 
-    val ALL = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+    /**
+     * v6: hora limite, modo desafio, declinação manual e base da trilha;
+     * horários de chegada, tempo fora da rota e percursos recebidos de outros aparelhos.
+     */
+    val MIGRATION_5_6 = object : Migration(5, 6) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            SQL_5_6.forEach(db::execSQL)
+        }
+    }
+
+    internal val SQL_5_6 = listOf(
+        "ALTER TABLE `trails` ADD COLUMN `declinationManual` INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE `trails` ADD COLUMN `deadlineMinutes` INTEGER",
+        "ALTER TABLE `trails` ADD COLUMN `challengeMode` INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE `trails` ADD COLUMN `baseLatitude` REAL",
+        "ALTER TABLE `trails` ADD COLUMN `baseLongitude` REAL",
+        "ALTER TABLE `navigation_sessions` ADD COLUMN `reachedTimes` TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE `navigation_sessions` ADD COLUMN `offRouteMillis` INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE `navigation_sessions` ADD COLUMN `remoteDevice` TEXT",
+    )
+
+    val ALL = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
 }

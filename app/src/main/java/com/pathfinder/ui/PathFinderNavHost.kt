@@ -17,6 +17,7 @@ import com.pathfinder.ui.network.NetworkScreen
 import com.pathfinder.ui.navigate.SessionReviewScreen
 import com.pathfinder.ui.offline.OfflineMapsScreen
 import com.pathfinder.ui.points.PointsScreen
+import com.pathfinder.ui.results.ResultsScreen
 import com.pathfinder.ui.settings.SettingsScreen
 
 private object Routes {
@@ -30,6 +31,9 @@ private object Routes {
     const val NETWORK = "network"
     const val MESSAGES = "messages?to={to}"
     const val DASHBOARD = "dashboard"
+    const val RESULTS = "results/{trailId}"
+
+    fun results(trailId: Long) = "results/$trailId"
 
     fun messages(to: String? = null) = if (to == null) "messages" else "messages?to=$to"
 
@@ -106,6 +110,7 @@ fun PathFinderNavHost(
                 onBack = { nav.popBackStack() },
                 onOpenSession = { nav.navigate(Routes.session(it)) },
                 onOpenMessages = { nav.navigate(Routes.messages()) },
+                onOpenResults = { nav.navigate(Routes.results(it)) },
             )
         }
         composable(
@@ -118,7 +123,11 @@ fun PathFinderNavHost(
             Routes.POINTS,
             arguments = listOf(navArgument("trailId") { type = NavType.LongType }),
         ) { entry ->
-            PointsScreen(trailId = entry.arguments!!.getLong("trailId"), onBack = { nav.popBackStack() })
+            PointsScreen(
+                trailId = entry.arguments!!.getLong("trailId"),
+                onBack = { nav.popBackStack() },
+                onOpenResults = { nav.navigate(Routes.results(it)) },
+            )
         }
         composable(Routes.OFFLINE) {
             OfflineMapsScreen(onBack = { nav.popBackStack() })
@@ -132,6 +141,12 @@ fun PathFinderNavHost(
                 onBack = { nav.popBackStack() },
                 onOpenNetwork = { nav.navigate(Routes.NETWORK) },
             )
+        }
+        composable(
+            Routes.RESULTS,
+            arguments = listOf(navArgument("trailId") { type = NavType.LongType }),
+        ) { entry ->
+            ResultsScreen(trailId = entry.arguments!!.getLong("trailId"), onBack = { nav.popBackStack() })
         }
         composable(Routes.DASHBOARD) {
             DashboardScreen(

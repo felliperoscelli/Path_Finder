@@ -37,6 +37,17 @@ object Formats {
         else -> String.format(ptBr, "%.2f km", meters / 1000)
     }
 
+    /** Duração: "45s", "12min05s", "1h05min". */
+    fun duration(millis: Long?): String {
+        if (millis == null) return "—"
+        val s = (millis / 1000).coerceAtLeast(0)
+        return when {
+            s < 60 -> "${s}s"
+            s < 3600 -> "%dmin%02ds".format(s / 60, s % 60)
+            else -> "%dh%02dmin".format(s / 3600, (s / 60) % 60)
+        }
+    }
+
     /** Ex.: "21,4° O" ou "3,0° L". */
     fun declination(degrees: Double?): String {
         if (degrees == null) return "—"

@@ -12,6 +12,7 @@ import com.pathfinder.data.settings.CoordinateFormat
 import com.pathfinder.data.settings.SettingsRepository
 import com.pathfinder.net.NetworkHub
 import com.pathfinder.pdf.PdfActions
+import com.pathfinder.pdf.PdfState
 import com.pathfinder.transfer.FileActions
 import com.pathfinder.transfer.Gpx
 import com.pathfinder.transfer.TrailJson
@@ -29,12 +30,6 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
-
-sealed interface PdfState {
-    data object Generating : PdfState
-    data class Ready(val file: File, val title: String) : PdfState
-    data class Failed(val message: String) : PdfState
-}
 
 class PointsViewModel(
     private val app: Application,
@@ -62,12 +57,20 @@ class PointsViewModel(
         viewModelScope.launch { trails.updatePointDetails(pointId, name, notes, photoPath) }
     }
 
+    fun movePoint(pointId: Long, latitude: Double, longitude: Double) {
+        viewModelScope.launch { trails.movePoint(pointId, latitude, longitude) }
+    }
+
+    fun setBase(latitude: Double, longitude: Double) {
+        viewModelScope.launch { trails.setBase(trailId, latitude, longitude) }
+    }
+
     fun deletePoint(pointId: Long) {
         viewModelScope.launch { trails.deletePoint(pointId) }
     }
 
-    fun updateTrail(name: String, deviationDistanceMeters: Int, deviationTimeSeconds: Int) {
-        viewModelScope.launch { trails.updateTrail(trailId, name, deviationDistanceMeters, deviationTimeSeconds) }
+    fun updateTrail(options: TrailRepository.TrailOptions) {
+        viewModelScope.launch { trails.updateTrail(trailId, options) }
     }
 
     fun generatePdf(options: SheetOptions) {

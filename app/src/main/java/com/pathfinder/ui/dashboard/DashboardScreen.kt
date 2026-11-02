@@ -79,6 +79,7 @@ import com.pathfinder.net.MonitorInfo
 import com.pathfinder.net.NetworkHub
 import com.pathfinder.net.NetworkState
 import com.pathfinder.net.QuickMessages
+import com.pathfinder.net.WatchKind
 import com.pathfinder.ui.appContainer
 import com.pathfinder.ui.components.EmergencyRed
 import com.pathfinder.ui.components.TopoMap
@@ -142,6 +143,11 @@ class DashboardViewModel(
         viewModelScope.launch { hub.sendText(text, to = deviceId) }
     }
 
+    /** Manda um grupo (ou todos, com null) voltar à base. */
+    fun returnToBase(deviceId: String?) {
+        viewModelScope.launch { hub.sendReturnToBase(deviceId) }
+    }
+
     companion object {
         val Factory = viewModelFactory {
             initializer {
@@ -175,6 +181,7 @@ fun DashboardScreen(
     var framedTrailId by rememberSaveable { mutableStateOf<Long?>(null) }
     var replyTo by remember { mutableStateOf<ReplyTarget?>(null) }
     var trailMenu by remember { mutableStateOf(false) }
+    var confirmAllReturn by remember { mutableStateOf(false) }
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) { while (true) { delay(5_000); now = System.currentTimeMillis() } }
 
@@ -217,6 +224,11 @@ fun DashboardScreen(
                                     onClick = { viewModel.chooseTrail(s.trail.id); trailMenu = false },
                                 )
                             }
+                            HorizontalDivider()
+                            DropdownMenuItem(
+                                text = { Text("Todos os grupos: voltar à base") },
+                                onClick = { trailMenu = false; confirmAllReturn = true },
+                            )
                         }
                     }
                     IconButton(onClick = { onOpenMessages(null) }) {
@@ -250,9 +262,22 @@ fun DashboardScreen(
         }
     }
 
+    if (confirmAllReturn) {
+        AlertDialog(
+            onDismissRequest = { confirmAllReturn = false },
+            title = { Text("Mandar todos voltarem à base?") },
+            text = { Text("Todos os monitores recebem o alarme e o app deles passa a guiar até a base.") },
+            confirmButton = {
+                TextButton(onClick = { confirmAllReturn = false; viewModel.returnToBase(null) }) { Text("Mandar voltar") }
+            },
+            dismissButton = { TextButton(onClick = { confirmAllReturn = false }) { Text("Cancelar") } },
+        )
+    }
+
     replyTo?.let { target ->
         QuickReplyDialog(
             target = target,
+            onReturnToBase = { viewModel.returnToBase(target.deviceId); replyTo = null },
             onSend = { text -> viewModel.reply(target.deviceId, text); replyTo = null },
             onOpenChat = { replyTo = null; onOpenMessages(target.deviceId) },
             onDismiss = { replyTo = null },
@@ -274,7 +299,8 @@ private fun AlertsArea(
 ) {
     val emergencies = board.openEmergencies
     val deviations = board.activeAlerts
-    if (emergencies.isEmpty() && deviations.isEmpty()) return
+    val watched = board.watch.filterKeys { it in board.monitors }
+    if (emergencies.isEmpty() && deviations.isEmpty() && watched.isEmpty()) return
     Column(
         modifier.fillMaxWidth().heightIn(max = 320.dp).verticalScroll(rememberScrollState()).padding(8.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -307,6 +333,33 @@ private fun AlertsArea(
                 extra = { TextButton(onClick = onSilence) { Text("Silenciar", color = Color.White) } },
             )
         }
+        watched.forEach { (device, kinds) ->
+            val m = board.monitors.getValue(device)
+            val who = "${m.groupName} · ${m.monitorName}"
+            kinds.sortedBy { it.ordinal }.forEach { kind ->
+                val (title, details, color) = when (kind) {
+                    WatchKind.NO_SIGNAL -> Triple(
+                        "Sem notícias – $who",
+                        "Última notícia há ${elapsed(now - m.receivedAt)} · última posição ${Formats.latLon(m.latitude, m.longitude)}",
+                        EmergencyRed,
+                    )
+                    WatchKind.OVERDUE -> Triple(
+                        "Passou da hora limite – $who",
+                        "Próximo ponto ${m.nextIndex + 1} de ${m.totalPoints}" + if (m.returningToBase) " · voltando à base" else "",
+                        Warning,
+                    )
+                    WatchKind.LOW_BATTERY -> Triple("Bateria baixa – $who", "Celular do monitor com ${m.batteryPercent}%", Stale)
+                }
+                AlertCard(
+                    title = title,
+                    details = details,
+                    color = color,
+                    onCenter = { onCenter(m.latitude, m.longitude) },
+                    onReply = { onReply(ReplyTarget(device, "Responder a $who")) },
+                    extra = {},
+                )
+            }
+        }
     }
 }
 
@@ -333,13 +386,24 @@ private fun AlertCard(
 }
 
 @Composable
-private fun QuickReplyDialog(target: ReplyTarget, onSend: (String) -> Unit, onOpenChat: () -> Unit, onDismiss: () -> Unit) {
+private fun QuickReplyDialog(
+    target: ReplyTarget,
+    onReturnToBase: () -> Unit,
+    onSend: (String) -> Unit,
+    onOpenChat: () -> Unit,
+    onDismiss: () -> Unit,
+) {
     var custom by remember { mutableStateOf("") }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(target.title) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Button(
+                    onClick = onReturnToBase,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = Warning),
+                ) { Text("Mandar voltar à base") }
                 QuickMessages.coordinator.forEach { q ->
                     OutlinedButton(onClick = { onSend(q.text) }, modifier = Modifier.fillMaxWidth()) { Text(q.text) }
                 }
@@ -383,15 +447,18 @@ private fun GroupList(board: BoardState, now: Long, onSelect: (MonitorInfo) -> U
                         Text("${m.groupName} · ${m.monitorName}", fontWeight = FontWeight.SemiBold)
                         val progress = if (m.finished) "concluiu" else "${m.nextIndex}/${m.totalPoints} pontos"
                         Text(
-                            "Último: ${m.lastReachedName ?: "—"} · $progress · há ${elapsed(now - m.updatedAt)}",
+                            "Último: ${m.lastReachedName ?: "—"} · $progress · há ${elapsed(now - m.receivedAt)}" +
+                                (m.batteryPercent?.let { " · bateria $it%" } ?: ""),
                             style = MaterialTheme.typography.bodySmall,
                         )
                     }
                     Text(
                         when {
+                            m.ended -> "Encerrou"
                             m.alarm -> "FORA"
+                            now - m.receivedAt > STALE_MS -> "Sem sinal"
+                            m.returningToBase -> "Voltando"
                             m.offRouteSince != null -> "Afastado"
-                            now - m.updatedAt > STALE_MS -> "Sem sinal"
                             else -> "Na rota"
                         },
                         color = statusColor(m, now),
@@ -421,8 +488,9 @@ private fun GroupMarkers(mapView: MapView, board: BoardState, now: Long) {
             marker.position = GeoPoint(m.latitude, m.longitude)
             marker.icon = GroupMarkerIcon.create(context, m.groupName, statusColor(m, now).toArgb())
             marker.title = "${m.groupName} · ${m.monitorName}"
-            marker.snippet = "Último ponto: ${m.lastReachedName ?: "—"} · há ${elapsed(now - m.updatedAt)}" +
-                (m.distanceToRouteMeters?.let { " · ${Formats.distance(it)} da rota" } ?: "")
+            marker.snippet = "Último ponto: ${m.lastReachedName ?: "—"} · há ${elapsed(now - m.receivedAt)}" +
+                (m.distanceToRouteMeters?.let { " · ${Formats.distance(it)} da rota" } ?: "") +
+                (m.batteryPercent?.let { " · bateria $it%" } ?: "")
         }
         mapView.invalidate()
     }
@@ -433,8 +501,8 @@ private fun GroupMarkers(mapView: MapView, board: BoardState, now: Long) {
 
 private fun statusColor(m: MonitorInfo, now: Long) = when {
     m.alarm -> EmergencyRed
+    m.ended || now - m.receivedAt > STALE_MS -> Stale
     m.offRouteSince != null -> Warning
-    now - m.updatedAt > STALE_MS -> Stale
     else -> OnRoute
 }
 

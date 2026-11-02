@@ -5,6 +5,8 @@ import android.content.Context
 import android.location.Location
 import android.util.Log
 import com.pathfinder.data.ChatRepository
+import com.pathfinder.data.NavigationRepository
+import com.pathfinder.data.RemoteSummary
 import com.pathfinder.data.TrailRepository
 import com.pathfinder.data.db.ChatMessageEntity
 import com.pathfinder.data.settings.AppSettings
@@ -48,6 +50,7 @@ class NetworkHub(
     val nearby: NearbyManager,
     val mesh: MeshCore,
     private val trails: TrailRepository,
+    private val navigation: NavigationRepository,
     private val chat: ChatRepository,
     settings: SettingsRepository,
     private val scope: CoroutineScope,
@@ -83,6 +86,7 @@ class NetworkHub(
             settings.settings.collect {
                 me = it
                 mesh.localName = it.userName
+                mesh.eventCode = EventCode.normalize(it.eventCode)
             }
         }
         scope.launch { mesh.delivered.collect(::handle) }
@@ -106,6 +110,13 @@ class NetworkHub(
             while (true) {
                 delay(EMERGENCY_REPEAT_MS)
                 if (role == UserRole.COORDINATOR && _board.value.openEmergencies.isNotEmpty()) alerts.alarm()
+            }
+        }
+        // Vigia: grupos sem notícias, atrasados na hora limite ou com bateria baixa.
+        scope.launch {
+            while (true) {
+                delay(WATCH_INTERVAL_MS)
+                checkWatch(System.currentTimeMillis())
             }
         }
     }
@@ -159,6 +170,12 @@ class NetworkHub(
         chat.save(envelope.toChat(outgoing = true))
     }
 
+    /** Coordenador pede que um grupo ([to]) ou todos (null) voltem à base. */
+    suspend fun sendReturnToBase(to: String?, reason: String = "Pedido do coordenador") {
+        val envelope = mesh.originate(ReturnToBase(reason), Priority.ALERT, to)
+        chat.save(envelope.toChat(outgoing = true))
+    }
+
     /** Silencia o alarme dos desvios ativos neste momento. */
     fun silenceAlerts() {
         _board.value.activeAlerts.forEach { silenced += it.deviceId to it.since }
@@ -186,8 +203,10 @@ class NetworkHub(
             is TrailShare -> if (role != UserRole.REPEATER) importTrail(body, envelope.originName)
             is TextMessage -> onText(envelope, body)
             is Emergency -> onEmergency(envelope, body)
+            is ReturnToBase -> onReturnToBase(envelope, body)
             else -> {
-                _board.update { MonitorBoard.reduce(it, envelope) }
+                _board.update { MonitorBoard.reduce(it, envelope, System.currentTimeMillis()) }
+                if (body is NavigationEnded) saveRemoteResult(envelope.origin, body)
                 if (role == UserRole.COORDINATOR) alertCoordinator(envelope.origin, body)
             }
         }
@@ -204,6 +223,60 @@ class NetworkHub(
             Notifications.message(context, if (envelope.to != null) "$from (para você)" else from, body.text, body.urgent),
         )
     }
+
+    private suspend fun onReturnToBase(envelope: Envelope, body: ReturnToBase) {
+        if (role == UserRole.REPEATER) return
+        chat.save(envelope.toChat(outgoing = false))
+        if (NavigationRuntime.state.value.isActive) {
+            NavigationRuntime.returnToBase(context, "${envelope.originName.ifBlank { "Coordenador" }}: voltem à base. ${body.reason}".trim())
+        }
+    }
+
+    /** Guarda o resumo de um grupo que terminou, para o resultado do evento. */
+    private suspend fun saveRemoteResult(device: String, body: NavigationEnded) {
+        if (role == UserRole.REPEATER) return
+        val trail = trails.getTrailByUuid(body.trailUuid) ?: return
+        navigation.saveRemoteSession(
+            trail.id, device,
+            RemoteSummary(
+                groupName = body.groupName,
+                monitorName = body.monitorName,
+                startedAt = body.startedAt,
+                endedAt = body.time,
+                reachedTimes = body.reachedTimes,
+                deviationAlerts = body.deviationAlerts,
+                offRouteMillis = body.offRouteMillis,
+            ),
+        )
+    }
+
+    private fun checkWatch(now: Long) {
+        val (state, raised) = MonitorBoard.watch(_board.value, now, me.noSignalMinutes * 60_000L)
+        // Situações que acabaram: some a notificação.
+        _board.value.watch.forEach { (device, kinds) ->
+            (kinds - state.watch[device].orEmpty()).forEach { cancel(watchNotificationId(device, it)) }
+        }
+        _board.value = state
+        if (role != UserRole.COORDINATOR) return
+        raised.forEach { (device, kind) ->
+            val m = state.monitors[device] ?: return@forEach
+            val who = "${m.groupName} · ${m.monitorName}"
+            val (title, text, alarm) = when (kind) {
+                WatchKind.NO_SIGNAL -> Triple(
+                    "Sem notícias: $who",
+                    "Nenhuma mensagem há mais de ${me.noSignalMinutes} min. Última posição ${"%.6f, %.6f".format(java.util.Locale.US, m.latitude, m.longitude)}.",
+                    true,
+                )
+                WatchKind.OVERDUE -> Triple("Hora limite: $who", "O grupo ainda não terminou a pista.", true)
+                WatchKind.LOW_BATTERY -> Triple("Bateria baixa: $who", "Celular do monitor com ${m.batteryPercent}%.", false)
+            }
+            if (alarm) alerts.alarm()
+            notify(watchNotificationId(device, kind), Notifications.remoteAlert(context, title, text))
+        }
+    }
+
+    private fun watchNotificationId(device: String, kind: WatchKind) =
+        Notifications.ID_WATCH_BASE + (device.hashCode() and 0xFFF) * 4 + kind.ordinal
 
     private suspend fun onEmergency(envelope: Envelope, body: Emergency) {
         learn(envelope.origin, body.monitorName, body.senderRole, body.groupName)
@@ -277,6 +350,11 @@ class NetworkHub(
             toDevice = to, text = "EMERGÊNCIA", urgent = true, emergency = true,
             latitude = b.latitude, longitude = b.longitude, createdAt = createdAt, outgoing = outgoing, read = outgoing,
         )
+        is ReturnToBase -> ChatMessageEntity(
+            id = id, fromDevice = origin, fromName = originName.ifBlank { "Coordenador" }, fromRole = UserRole.COORDINATOR.name,
+            toDevice = to, text = "Voltem à base" + (b.reason.takeIf { it.isNotBlank() }?.let { " – $it" } ?: ""),
+            urgent = true, createdAt = createdAt, outgoing = outgoing, read = outgoing,
+        )
         else -> error("Não é mensagem de chat")
     }
 
@@ -290,5 +368,6 @@ class NetworkHub(
     private companion object {
         const val PRUNE_INTERVAL_MS = 5 * 60_000L
         const val EMERGENCY_REPEAT_MS = 30_000L
+        const val WATCH_INTERVAL_MS = 30_000L
     }
 }

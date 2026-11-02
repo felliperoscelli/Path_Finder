@@ -125,3 +125,39 @@ class NavigationEngineTest {
         assertEquals(0, e.status.nextIndex)
     }
 }
+
+class ReturnAndDeadlineTest {
+    private val m = 1.0 / 111_320.0
+    private val config = NavigationConfig(30.0, 5 * 60_000, 15.0)
+    private val points = listOf(LatLon(0.0, 0.0), LatLon(0.0, 500 * m), LatLon(0.0, 1000 * m))
+
+    @Test fun returnToBaseGuidesHomeWithoutDeviationAlarm() {
+        val e = NavigationEngine(points, emptyList(), -21.0, config)
+        e.onFix(0.0, 0.0, 5f, 0)
+        e.onFix(0.0, 300 * m, 5f, 60_000)
+        e.startReturn(LatLon(0.0, 0.0))
+        // Longe da rota por muito tempo: sem alarme enquanto volta.
+        for (t in 1..20L) assertTrue(e.onFix(200 * m, 300 * m, 5f, 60_000 + t * 60_000).isEmpty())
+        val s = e.status
+        assertTrue(s.returningToBase)
+        assertEquals(360.6, s.distanceToNextMeters!!, 1.0)
+        assertEquals(236.3, s.trueBearingToNext!!, 0.5) // sudoeste
+        assertEquals(listOf(NavigationEvent.ArrivedAtBase), e.onFix(5 * m, 3 * m, 5f, 2_000_000))
+        assertTrue(e.status.arrivedAtBase)
+        assertTrue(e.onFix(0.0, 0.0, 5f, 2_100_000).isEmpty()) // avisa uma vez só
+        e.stopReturn()
+        assertFalse(e.status.returningToBase)
+        assertEquals(1, e.status.nextIndex)
+    }
+
+    @Test fun deadlineWarnsOnceThenReaches() {
+        val d = DeadlineTracker(deadlineAt = 100 * 60_000L)
+        assertNull(d.check(60 * 60_000L))
+        assertEquals(DeadlineEvent.WARNING, d.check(70 * 60_000L))
+        assertNull(d.check(80 * 60_000L))
+        assertEquals(DeadlineEvent.REACHED, d.check(100 * 60_000L))
+        assertNull(d.check(120 * 60_000L))
+        // Começou depois da hora: só "chegou a hora".
+        assertEquals(DeadlineEvent.REACHED, DeadlineTracker(10L).check(20L))
+    }
+}

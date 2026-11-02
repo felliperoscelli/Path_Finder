@@ -35,6 +35,9 @@ data class NavigationStatus(
     /** Se o desvio está sendo vigiado (só depois de chegar à partida). */
     val monitoring: Boolean = false,
     val finished: Boolean = false,
+    /** Voltando à base: distância e azimutes acima apontam para a base. */
+    val returningToBase: Boolean = false,
+    val arrivedAtBase: Boolean = false,
 )
 
 sealed interface NavigationEvent {
@@ -51,6 +54,7 @@ sealed interface NavigationEvent {
 
     data class BackOnRoute(val since: Long, val maxDistanceMeters: Double) : NavigationEvent
     data object Finished : NavigationEvent
+    data object ArrivedAtBase : NavigationEvent
 }
 
 /**
@@ -82,6 +86,8 @@ class NavigationEngine(
     private var alarmFired = false
     private var lastAlarmAt = 0L
     private var silenced = false
+    private var base: LatLon? = null
+    private var arrivedAtBase = false
     private var lastStatus = NavigationStatus(nextIndex, reachedSet.toSet())
 
     val status: NavigationStatus get() = lastStatus
@@ -89,6 +95,7 @@ class NavigationEngine(
     fun onFix(latitude: Double, longitude: Double, accuracyMeters: Float?, timeMillis: Long): List<NavigationEvent> {
         val events = mutableListOf<NavigationEvent>()
         val here = LatLon(latitude, longitude)
+        base?.let { return returnFix(here, it, events) }
         val wasFinished = nextIndex >= points.size
 
         // Chegada: o ponto mais à frente dentro do raio.
@@ -139,6 +146,44 @@ class NavigationEngine(
             silenced = silenced,
             monitoring = monitoring,
             finished = finished,
+        )
+        return events
+    }
+
+    /**
+     * Passa a guiar até a [target] (base): sem chegada aos pontos e sem
+     * alerta de desvio, já que o grupo sai da rota de propósito.
+     */
+    fun startReturn(target: LatLon) {
+        base = target
+        arrivedAtBase = false
+        lastStatus = lastStatus.copy(returningToBase = true, arrivedAtBase = false, distanceToNextMeters = null, alarmActive = false)
+    }
+
+    /** Volta a seguir a trilha a partir do próximo ponto. */
+    fun stopReturn() {
+        base = null
+        arrivedAtBase = false
+        lastStatus = lastStatus.copy(returningToBase = false, arrivedAtBase = false, distanceToNextMeters = null)
+    }
+
+    private fun returnFix(here: LatLon, target: LatLon, events: MutableList<NavigationEvent>): List<NavigationEvent> {
+        endDeviation(events)
+        val leg = Geodesy.inverse(here, target)
+        if (!arrivedAtBase && leg.distanceMeters <= config.arrivalRadiusMeters) {
+            arrivedAtBase = true
+            events += NavigationEvent.ArrivedAtBase
+        }
+        lastStatus = NavigationStatus(
+            nextIndex = nextIndex,
+            reached = reachedSet.toSet(),
+            distanceToNextMeters = leg.distanceMeters,
+            trueBearingToNext = leg.trueAzimuthDegrees,
+            magneticBearingToNext = magneticAzimuth(leg.trueAzimuthDegrees, declinationDegrees),
+            distanceToRouteMeters = distanceToRoute(here),
+            finished = nextIndex >= points.size,
+            returningToBase = true,
+            arrivedAtBase = arrivedAtBase,
         )
         return events
     }

@@ -171,7 +171,13 @@ interface NavigationDao {
     @Query("SELECT * FROM navigation_sessions WHERE trailId = :trailId ORDER BY startedAt DESC")
     fun observeSessions(trailId: Long): Flow<List<NavigationSessionEntity>>
 
-    @Query("SELECT * FROM navigation_sessions WHERE endedAt IS NULL ORDER BY startedAt DESC LIMIT 1")
+    @Query("SELECT * FROM navigation_sessions WHERE remoteDevice = :device AND startedAt = :startedAt LIMIT 1")
+    suspend fun findRemote(device: String, startedAt: Long): NavigationSessionEntity?
+
+    @Query("SELECT * FROM navigation_sessions WHERE trailId = :trailId AND endedAt IS NOT NULL ORDER BY startedAt")
+    suspend fun finishedSessions(trailId: Long): List<NavigationSessionEntity>
+
+    @Query("SELECT * FROM navigation_sessions WHERE endedAt IS NULL AND remoteDevice IS NULL ORDER BY startedAt DESC LIMIT 1")
     suspend fun getActiveSession(): NavigationSessionEntity?
 
     @Query("DELETE FROM navigation_sessions WHERE id = :id")
@@ -188,4 +194,7 @@ interface NavigationDao {
 
     @Query("SELECT * FROM deviation_events WHERE sessionId = :sessionId ORDER BY startedAt")
     fun observeDeviations(sessionId: Long): Flow<List<DeviationEventEntity>>
+
+    @Query("SELECT * FROM deviation_events WHERE sessionId = :sessionId")
+    suspend fun deviations(sessionId: Long): List<DeviationEventEntity>
 }

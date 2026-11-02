@@ -43,6 +43,8 @@ import androidx.core.content.FileProvider
 import com.pathfinder.data.db.TrailPointEntity
 import com.pathfinder.data.settings.CoordinateFormat
 import com.pathfinder.geo.Formats
+import com.pathfinder.geo.LatLon
+import com.pathfinder.ui.components.CoordinateEntryDialog
 import java.io.File
 
 /**
@@ -189,10 +191,24 @@ fun EditPointDialog(
     point: TrailPointEntity,
     format: CoordinateFormat,
     declinationDegrees: Double?,
+    isBase: Boolean,
     onSave: (name: String, notes: String, photoPath: String?) -> Unit,
     onDelete: () -> Unit,
+    onMoveTo: (LatLon) -> Unit,
+    onSetBase: () -> Unit,
     onDismiss: () -> Unit,
 ) {
+    var typing by remember { mutableStateOf(false) }
+    if (typing) {
+        CoordinateEntryDialog(
+            title = "Corrigir coordenadas",
+            initial = LatLon(point.latitude, point.longitude),
+            preferUtm = format == CoordinateFormat.UTM,
+            onConfirm = { typing = false; onMoveTo(it) },
+            onDismiss = { typing = false },
+        )
+        return
+    }
     PointFormDialog(
         title = "${point.sequence + 1}. ${point.name}",
         confirmLabel = "Salvar",
@@ -218,9 +234,17 @@ fun EditPointDialog(
             }
             Text("Declinação: ${Formats.declination(declinationDegrees)}", style = MaterialTheme.typography.bodySmall)
             Text(
-                "Para mover, ative a edição no mapa e arraste o marcador.",
+                "Para mover, arraste o marcador no modo edição ou digite as coordenadas.",
                 style = MaterialTheme.typography.bodySmall,
             )
+            Row {
+                TextButton(onClick = { typing = true }) { Text("Corrigir coordenadas") }
+                if (isBase) {
+                    TextButton(onClick = {}, enabled = false) { Text("É a base") }
+                } else {
+                    TextButton(onClick = onSetBase) { Text("Usar como base") }
+                }
+            }
         }
     }
 }

@@ -14,6 +14,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDownward
@@ -21,6 +23,7 @@ import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -36,6 +39,7 @@ import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
+import androidx.compose.material3.Switch
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -51,11 +55,15 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.pathfinder.data.TrailRepository
 import com.pathfinder.data.db.TrailEntity
+import com.pathfinder.data.db.isBase
+import com.pathfinder.geo.TimeOfDay
 import com.pathfinder.data.db.TrailPointEntity
 import com.pathfinder.data.settings.CoordinateFormat
 import com.pathfinder.geo.Formats
-import com.pathfinder.pdf.PdfActions
+import com.pathfinder.pdf.PdfState
+import com.pathfinder.ui.components.PdfResultDialog
 import com.pathfinder.transfer.FileActions
 import com.pathfinder.pdf.SheetMode
 import com.pathfinder.pdf.SheetOptions
@@ -68,6 +76,7 @@ import com.pathfinder.ui.map.PhotoThumbnail
 fun PointsScreen(
     trailId: Long,
     onBack: () -> Unit,
+    onOpenResults: (Long) -> Unit,
     viewModel: PointsViewModel = viewModel(key = "points-$trailId", factory = PointsViewModel.factory(trailId)),
 ) {
     val trail by viewModel.trail.collectAsStateWithLifecycle()
@@ -87,6 +96,9 @@ fun PointsScreen(
                     IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Voltar") }
                 },
                 actions = {
+                    IconButton(onClick = { onOpenResults(trailId) }) {
+                        Icon(Icons.Filled.EmojiEvents, "Resultado")
+                    }
                     IconButton(onClick = { sharing = true }, enabled = !trail?.points.isNullOrEmpty()) {
                         Icon(Icons.Filled.Share, "Enviar trilha")
                     }
@@ -134,6 +146,7 @@ fun PointsScreen(
                 point = editing,
                 format = format,
                 declinationDegrees = t.trail.declinationDegrees,
+                isBase = t.trail.isBase(editing),
                 onSave = { name, notes, photo ->
                     viewModel.updatePoint(editing.id, name, notes, photo)
                     editingPointId = null
@@ -142,14 +155,19 @@ fun PointsScreen(
                     viewModel.deletePoint(editing.id)
                     editingPointId = null
                 },
+                onMoveTo = {
+                    viewModel.movePoint(editing.id, it.latitude, it.longitude)
+                    editingPointId = null
+                },
+                onSetBase = { viewModel.setBase(editing.latitude, editing.longitude) },
                 onDismiss = { editingPointId = null },
             )
         }
         if (editingTrail) {
             EditTrailDialog(
                 trail = t.trail,
-                onSave = { name, distance, minutes ->
-                    viewModel.updateTrail(name, distance, minutes * 60)
+                onSave = { options ->
+                    viewModel.updateTrail(options)
                     editingTrail = false
                 },
                 onDismiss = { editingTrail = false },
@@ -185,7 +203,16 @@ private fun TrailHeader(trail: TrailEntity, points: List<TrailPointEntity>, onEd
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 val total = points.sumOf { it.distanceFromPreviousMeters ?: 0.0 }
                 Text("${points.size} pontos · ${Formats.distance(total)}", style = MaterialTheme.typography.titleMedium)
-                Text("Declinação usada: ${Formats.declination(trail.declinationDegrees)}")
+                Text(
+                    "Declinação usada: ${Formats.declination(trail.declinationDegrees)}" +
+                        if (trail.declinationManual) " (manual)" else "",
+                )
+                val extras = listOfNotNull(
+                    trail.deadlineMinutes?.let { "Hora limite ${TimeOfDay.format(it)}" },
+                    "Modo desafio".takeIf { trail.challengeMode },
+                    "Base definida".takeIf { trail.baseLatitude != null },
+                )
+                if (extras.isNotEmpty()) Text(extras.joinToString(" · "), style = MaterialTheme.typography.bodySmall)
                 Text(
                     "Alerta de desvio: ${trail.deviationDistanceMeters} m por ${trail.deviationTimeSeconds / 60} min",
                     style = MaterialTheme.typography.bodySmall,
@@ -235,17 +262,28 @@ private fun PointCard(
 }
 
 @Composable
-private fun EditTrailDialog(trail: TrailEntity, onSave: (String, Int, Int) -> Unit, onDismiss: () -> Unit) {
+private fun EditTrailDialog(trail: TrailEntity, onSave: (TrailRepository.TrailOptions) -> Unit, onDismiss: () -> Unit) {
     var name by rememberSaveable { mutableStateOf(trail.name) }
     var distance by rememberSaveable { mutableStateOf(trail.deviationDistanceMeters.toString()) }
     var minutes by rememberSaveable { mutableStateOf((trail.deviationTimeSeconds / 60).toString()) }
+    var deadline by rememberSaveable { mutableStateOf(trail.deadlineMinutes?.let(TimeOfDay::format).orEmpty()) }
+    var challenge by rememberSaveable { mutableStateOf(trail.challengeMode) }
+    var manual by rememberSaveable { mutableStateOf(trail.declinationManual) }
+    var declText by rememberSaveable {
+        mutableStateOf(trail.declinationDegrees?.let { String.format(java.util.Locale.US, "%.1f", kotlin.math.abs(it)) }.orEmpty())
+    }
+    var west by rememberSaveable { mutableStateOf((trail.declinationDegrees ?: -1.0) < 0) }
+
     val d = distance.toIntOrNull()?.takeIf { it in 5..500 }
     val m = minutes.toIntOrNull()?.takeIf { it in 1..60 }
+    val deadlineOk = deadline.isBlank() || TimeOfDay.parse(deadline) != null
+    val decl = declText.replace(',', '.').toDoubleOrNull()?.takeIf { it in 0.0..90.0 }
+    val declOk = !manual || decl != null
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Editar trilha") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(name, { name = it }, label = { Text("Nome da pista") }, singleLine = true)
                 OutlinedTextField(
                     distance, { distance = it.filter(Char::isDigit).take(3) },
@@ -259,12 +297,63 @@ private fun EditTrailDialog(trail: TrailEntity, onSave: (String, Int, Int) -> Un
                     isError = m == null, singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 )
+                OutlinedTextField(
+                    deadline, { deadline = it.filter { c -> c.isDigit() || c == ':' || c == 'h' }.take(5) },
+                    label = { Text("Hora limite (ex.: 17:00), opcional") },
+                    isError = !deadlineOk, singleLine = true,
+                    supportingText = { Text("Os grupos são avisados 30 min antes; o coordenador, na hora.") },
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Modo desafio")
+                        Text(
+                            "O monitor não vê distância nem direção dos pontos: o grupo usa só a bússola.",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                    Switch(checked = challenge, onCheckedChange = { challenge = it })
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Declinação manual")
+                        Text(
+                            if (manual) "Use o valor da carta topográfica." else "Calculada: ${Formats.declination(trail.declinationDegrees)}",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                    Switch(checked = manual, onCheckedChange = { manual = it })
+                }
+                if (manual) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(
+                            declText, { declText = it.filter { c -> c.isDigit() || c == ',' || c == '.' }.take(5) },
+                            label = { Text("Graus") }, isError = decl == null, singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            modifier = Modifier.weight(1f),
+                        )
+                        SingleChoiceSegmentedButtonRow {
+                            SegmentedButton(selected = west, onClick = { west = true }, shape = SegmentedButtonDefaults.itemShape(0, 2)) { Text("O") }
+                            SegmentedButton(selected = !west, onClick = { west = false }, shape = SegmentedButtonDefaults.itemShape(1, 2)) { Text("L") }
+                        }
+                    }
+                }
             }
         },
         confirmButton = {
             TextButton(
-                onClick = { onSave(name, d!!, m!!) },
-                enabled = name.isNotBlank() && d != null && m != null,
+                onClick = {
+                    onSave(
+                        TrailRepository.TrailOptions(
+                            name = name,
+                            deviationDistanceMeters = d!!,
+                            deviationTimeSeconds = m!! * 60,
+                            deadlineMinutes = deadline.takeIf { it.isNotBlank() }?.let(TimeOfDay::parse),
+                            challengeMode = challenge,
+                            manualDeclination = if (manual) decl!! * if (west) -1 else 1 else null,
+                        )
+                    )
+                },
+                enabled = name.isNotBlank() && d != null && m != null && deadlineOk && declOk,
             ) { Text("Salvar") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } },
@@ -324,52 +413,6 @@ private fun PdfOptionsDialog(
     )
 }
 
-@Composable
-private fun PdfResultDialog(state: PdfState, onDismiss: () -> Unit) {
-    val context = LocalContext.current
-    val save = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
-        val ready = state as? PdfState.Ready
-        if (uri != null && ready != null) {
-            val ok = runCatching { PdfActions.saveTo(context, ready.file, uri) }.isSuccess
-            Toast.makeText(context, if (ok) "Ficha salva." else "Não foi possível salvar.", Toast.LENGTH_SHORT).show()
-        }
-    }
-    when (state) {
-        PdfState.Generating -> AlertDialog(
-            onDismissRequest = {},
-            text = {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    CircularProgressIndicator()
-                    Text("Gerando a ficha…")
-                }
-            },
-            confirmButton = {},
-        )
-        is PdfState.Failed -> AlertDialog(
-            onDismissRequest = onDismiss,
-            title = { Text("Erro") },
-            text = { Text(state.message) },
-            confirmButton = { TextButton(onClick = onDismiss) { Text("OK") } },
-        )
-        is PdfState.Ready -> AlertDialog(
-            onDismissRequest = onDismiss,
-            title = { Text("Ficha pronta") },
-            text = { Text("O que deseja fazer com \"${state.file.name}\"?") },
-            confirmButton = {
-                Column(horizontalAlignment = Alignment.End) {
-                    TextButton(onClick = { PdfActions.print(context, state.file, state.title) }) { Text("Imprimir") }
-                    TextButton(onClick = {
-                        if (!PdfActions.share(context, state.file, state.title)) {
-                            Toast.makeText(context, "Nenhum app para compartilhar.", Toast.LENGTH_SHORT).show()
-                        }
-                    }) { Text("Compartilhar") }
-                    TextButton(onClick = { save.launch(state.file.name) }) { Text("Salvar em…") }
-                    TextButton(onClick = onDismiss) { Text("Fechar") }
-                }
-            },
-        )
-    }
-}
 
 /** Enviar a trilha pela rede local ou exportar como arquivo (.json do Path Finder ou .gpx). */
 @Composable

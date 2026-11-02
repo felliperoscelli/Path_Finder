@@ -41,6 +41,8 @@ class TrailRepository(
 
     suspend fun getTrail(id: Long): TrailEntity? = trailDao.getById(id)
 
+    suspend fun getTrailByUuid(uuid: String): TrailEntity? = trailDao.getByUuid(uuid)
+
     suspend fun createTrail(name: String, deviationDistanceMeters: Int, deviationTimeSeconds: Int): Long {
         val now = System.currentTimeMillis()
         return trailDao.insert(
@@ -54,17 +56,45 @@ class TrailRepository(
         )
     }
 
-    /** Altera nome e limites de desvio da trilha. */
-    suspend fun updateTrail(id: Long, name: String, deviationDistanceMeters: Int, deviationTimeSeconds: Int) {
-        val trail = trailDao.getById(id) ?: return
-        trailDao.update(
-            trail.copy(
-                name = name.trim(),
-                deviationDistanceMeters = deviationDistanceMeters,
-                deviationTimeSeconds = deviationTimeSeconds,
-                updatedAt = System.currentTimeMillis(),
-            )
+    /** Opções editáveis de uma trilha. */
+    data class TrailOptions(
+        val name: String,
+        val deviationDistanceMeters: Int,
+        val deviationTimeSeconds: Int,
+        val deadlineMinutes: Int?,
+        val challengeMode: Boolean,
+        /** Declinação digitada; null = calculada pelo modelo geomagnético. */
+        val manualDeclination: Double?,
+    )
+
+    /**
+     * Altera as opções da trilha. Mudar a declinação recalcula os azimutes
+     * magnéticos de todos os pontos.
+     */
+    suspend fun updateTrail(id: Long, options: TrailOptions) = db.withTransaction {
+        val trail = trailDao.getById(id) ?: return@withTransaction
+        val updated = trail.copy(
+            name = options.name.trim(),
+            deviationDistanceMeters = options.deviationDistanceMeters,
+            deviationTimeSeconds = options.deviationTimeSeconds,
+            deadlineMinutes = options.deadlineMinutes,
+            challengeMode = options.challengeMode,
+            declinationManual = options.manualDeclination != null,
+            declinationDegrees = when {
+                options.manualDeclination != null -> options.manualDeclination
+                trail.declinationManual -> null // volta para a automática
+                else -> trail.declinationDegrees
+            },
+            updatedAt = System.currentTimeMillis(),
         )
+        trailDao.update(updated)
+        if (updated.declinationDegrees != trail.declinationDegrees) saveOrder(updated, pointDao.getForTrail(id))
+    }
+
+    /** Define a base da trilha (null = ponto de partida). */
+    suspend fun setBase(id: Long, latitude: Double?, longitude: Double?) {
+        val trail = trailDao.getById(id) ?: return
+        trailDao.update(trail.copy(baseLatitude = latitude, baseLongitude = longitude, updatedAt = System.currentTimeMillis()))
     }
 
     suspend fun deleteTrail(id: Long) {
@@ -123,7 +153,13 @@ class TrailRepository(
         val trail = trailDao.getById(point.trailId) ?: return@withTransaction
         // A altitude da leitura original deixa de valer na nova posição.
         val moved = point.copy(latitude = latitude, longitude = longitude, altitude = null)
-        saveOrder(trail, pointDao.getForTrail(trail.id).map { if (it.id == pointId) moved else it })
+        // Se o ponto era a base, a base vai junto.
+        val updatedTrail = if (trail.baseLatitude == point.latitude && trail.baseLongitude == point.longitude) {
+            trail.copy(baseLatitude = latitude, baseLongitude = longitude)
+        } else {
+            trail
+        }
+        saveOrder(updatedTrail, pointDao.getForTrail(trail.id).map { if (it.id == pointId) moved else it })
     }
 
     /** Muda a ordem do ponto na trilha e recalcula. */
@@ -182,6 +218,11 @@ class TrailRepository(
             track = trackDao.getTrack(trailId, TrackSource.CREATION).map {
                 PackageTrackPoint(it.latitude, it.longitude, it.altitude, it.timestamp)
             },
+            declinationManual = trail.declinationManual,
+            deadlineMinutes = trail.deadlineMinutes,
+            challengeMode = trail.challengeMode,
+            baseLatitude = trail.baseLatitude,
+            baseLongitude = trail.baseLongitude,
         )
     }
 
@@ -208,6 +249,11 @@ class TrailRepository(
             deviationDistanceMeters = pkg.deviationDistanceMeters,
             deviationTimeSeconds = pkg.deviationTimeSeconds,
             declinationDegrees = decl,
+            declinationManual = pkg.declinationManual && pkg.declinationDegrees != null,
+            deadlineMinutes = pkg.deadlineMinutes,
+            challengeMode = pkg.challengeMode,
+            baseLatitude = pkg.baseLatitude,
+            baseLongitude = pkg.baseLongitude,
         )
         val trailId = if (existing != null) {
             pointDao.getForTrail(existing.id).mapNotNull { it.photoPath }.forEach { File(it).delete() }

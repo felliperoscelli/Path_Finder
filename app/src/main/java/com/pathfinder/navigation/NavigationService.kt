@@ -24,7 +24,9 @@ import com.pathfinder.data.db.TrackPointEntity
 import com.pathfinder.data.db.TrackSource
 import com.pathfinder.geo.Formats
 import com.pathfinder.net.BackOnRoute
+import com.pathfinder.geo.TimeOfDay
 import com.pathfinder.net.DeviationAlert
+import com.pathfinder.net.NavigationEnded
 import com.pathfinder.net.PointReached
 import com.pathfinder.net.PositionUpdate
 import com.pathfinder.net.Priority as MessagePriority
@@ -59,6 +61,11 @@ class NavigationService : Service() {
     private var positionIntervalMs = 30_000L
     private var lastPublishedAt = 0L
     private var lastLocation: Location? = null
+    private var startedAt = 0L
+    private val reachedTimes = mutableMapOf<Int, Long>()
+    private var deadline: DeadlineTracker? = null
+    private var challengeMode = false
+    private var ticker: kotlinx.coroutines.Job? = null
 
     private val callback = object : LocationCallback() {
         override fun onLocationResult(result: LocationResult) {
@@ -88,6 +95,14 @@ class NavigationService : Service() {
                 it.silence()
                 alerts.stop()
                 publish()
+            }
+            action == ACTION_RETURN_BASE -> returnToBase(intent.getStringExtra(EXTRA_REASON))
+            action == ACTION_RESUME_TRAIL -> engine?.let {
+                it.stopReturn()
+                cancel(Notifications.ID_DEADLINE)
+                publish()
+                lastLocation?.let(::publishPosition)
+                updateNotification()
             }
         }
         return START_REDELIVER_INTENT
@@ -124,6 +139,11 @@ class NavigationService : Service() {
             monitorName = session.monitorName
             positionIntervalMs = settings.positionIntervalSeconds * 1000L
             lastPublishedAt = 0L
+            startedAt = session.startedAt
+            reachedTimes.clear()
+            reachedTimes += session.reachedTimeMap
+            challengeMode = r.challengeMode
+            deadline = r.deadlineMinutes?.let { DeadlineTracker(TimeOfDay.nextOccurrence(session.startedAt, it)) }
             route = r
             engine = NavigationEngine(
                 points = r.points,
@@ -138,10 +158,26 @@ class NavigationService : Service() {
                 reached = session.reachedSet,
             )
             NavigationRuntime.update {
-                NavigationState(sessionId = id, trailId = trailId, groupName = session.groupName, status = engine?.status)
+                NavigationState(
+                    sessionId = id,
+                    trailId = trailId,
+                    groupName = session.groupName,
+                    status = engine?.status,
+                    challengeMode = challengeMode,
+                    deadlineAt = deadline?.deadlineAt,
+                    batteryPercent = batteryPercent(),
+                )
             }
             requestUpdates()
             updateNotification()
+            // Hora limite e bateria são conferidas mesmo sem leitura de GPS.
+            ticker?.cancel()
+            ticker = scope.launch {
+                while (true) {
+                    tick(System.currentTimeMillis())
+                    kotlinx.coroutines.delay(TICK_MS)
+                }
+            }
         }
     }
 
@@ -170,6 +206,7 @@ class NavigationService : Service() {
         when (event) {
             is NavigationEvent.PointReached -> {
                 alerts.chime()
+                reachedTimes[event.index] = location.time
                 onProgressChanged()
                 route?.let { r ->
                     hub.publish(
@@ -179,6 +216,11 @@ class NavigationService : Service() {
                 }
             }
             NavigationEvent.Finished -> Unit // o aviso de chegada já foi dado
+            NavigationEvent.ArrivedAtBase -> {
+                alerts.chime()
+                notify(Notifications.ID_DEADLINE, Notifications.deadline(this, trailId, "Chegaram à base", "Encerre a navegação quando todos estiverem reunidos.", withReturnAction = false))
+                publishPosition(location)
+            }
             is NavigationEvent.DeviationAlarm -> {
                 alerts.alarm()
                 if (!event.repeat) {
@@ -221,7 +263,8 @@ class NavigationService : Service() {
     private fun onProgressChanged() {
         val e = engine ?: return
         val s = e.status
-        scope.launch { repo.saveProgress(sessionId, s.nextIndex, s.reached) }
+        val times = reachedTimes.toMap()
+        scope.launch { repo.saveProgress(sessionId, s.nextIndex, s.reached, times) }
         publish()
         lastLocation?.let(::publishPosition)
         updateNotification()
@@ -250,10 +293,59 @@ class NavigationService : Service() {
                 offRouteSince = s.offRouteSince,
                 alarm = s.alarmActive,
                 finished = s.finished,
+                batteryPercent = batteryPercent(),
+                deadlineAt = deadline?.deadlineAt,
+                returningToBase = s.returningToBase,
             ),
             MessagePriority.POSITION,
         )
     }
+
+    /** Voltar à base: pelo botão do monitor, pela hora limite ou a pedido do coordenador. */
+    private fun returnToBase(reason: String?) {
+        val e = engine ?: return
+        val base = route?.base ?: return
+        e.startReturn(base)
+        publish()
+        if (reason != null) {
+            alerts.alarm()
+            notify(Notifications.ID_DEADLINE, Notifications.deadline(this, trailId, "Voltar à base", reason, withReturnAction = false))
+        }
+        lastLocation?.let(::publishPosition)
+        updateNotification()
+    }
+
+    private fun tick(now: Long) {
+        NavigationRuntime.update { it.copy(batteryPercent = batteryPercent()) }
+        val d = deadline ?: return
+        when (d.check(now)) {
+            DeadlineEvent.WARNING -> {
+                alerts.chime()
+                notify(
+                    Notifications.ID_DEADLINE,
+                    Notifications.deadline(
+                        this, trailId, "Faltam ${d.minutesLeft(now)} min para a hora limite",
+                        "Hora limite: ${java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT).format(java.util.Date(d.deadlineAt))}. Planejem a volta.",
+                        withReturnAction = true,
+                    ),
+                )
+            }
+            DeadlineEvent.REACHED -> {
+                alerts.alarm()
+                NavigationRuntime.update { it.copy(deadlineReached = true) }
+                notify(
+                    Notifications.ID_DEADLINE,
+                    Notifications.deadline(this, trailId, "Hora limite!", "Voltem à base agora.", withReturnAction = true),
+                )
+            }
+            null -> Unit
+        }
+    }
+
+    private fun batteryPercent(): Int? =
+        getSystemService(android.os.BatteryManager::class.java)
+            ?.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY)
+            ?.takeIf { it in 0..100 }
 
     private fun publish() {
         val e = engine ?: return
@@ -283,7 +375,11 @@ class NavigationService : Service() {
         val r = route ?: return
         val s = engine?.status ?: return
         val detail = when {
+            s.returningToBase -> if (s.arrivedAtBase) "Na base" else
+                "Voltando à base: ${s.distanceToNextMeters?.let(Formats::distance) ?: "…"}" +
+                    (s.magneticBearingToNext?.let { " · az. mag. ${Formats.azimuth(it)}" } ?: "")
             s.finished -> "Pista concluída!"
+            challengeMode -> "Próximo: ${s.nextIndex + 1}. ${r.pointNames.getOrNull(s.nextIndex).orEmpty()} (modo desafio)"
             else -> {
                 val name = r.pointNames.getOrNull(s.nextIndex) ?: ""
                 val dist = s.distanceToNextMeters?.let { " a ${Formats.distance(it)}" } ?: ""
@@ -297,14 +393,36 @@ class NavigationService : Service() {
     private fun finish() {
         val id = sessionId
         val eventId = openDeviationId
+        val r = route
         scope.launch {
             if (eventId != null) repo.closeDeviation(eventId, null, 0.0)
-            if (id != NO_SESSION) repo.finishSession(id)
+            val ended = if (id != NO_SESSION) repo.finishSession(id) else null
+            // Resumo para o resultado no coordenador.
+            if (ended != null && r != null) {
+                hub.publish(
+                    NavigationEnded(
+                        time = ended.endedAt ?: System.currentTimeMillis(),
+                        trailUuid = r.trailUuid,
+                        trailName = r.trailName,
+                        groupName = groupName,
+                        monitorName = monitorName,
+                        startedAt = ended.startedAt,
+                        reachedTimes = ended.reachedTimeMap,
+                        totalPoints = r.points.size,
+                        deviationAlerts = ended.deviationAlerts,
+                        offRouteMillis = ended.offRouteMillis,
+                    ),
+                    MessagePriority.NORMAL,
+                )
+            }
             stopEverything()
         }
     }
 
     private fun stopEverything() {
+        ticker?.cancel()
+        ticker = null
+        cancel(Notifications.ID_DEADLINE)
         fused.removeLocationUpdates(callback)
         alerts.stop()
         sessionId = NO_SESSION
@@ -347,6 +465,10 @@ class NavigationService : Service() {
         const val ACTION_SKIP = "com.pathfinder.navigation.SKIP"
         const val ACTION_BACK = "com.pathfinder.navigation.BACK"
         const val ACTION_SILENCE = "com.pathfinder.navigation.SILENCE"
+        const val ACTION_RETURN_BASE = "com.pathfinder.navigation.RETURN_BASE"
+        const val ACTION_RESUME_TRAIL = "com.pathfinder.navigation.RESUME_TRAIL"
+        const val EXTRA_REASON = "reason"
+        private const val TICK_MS = 30_000L
         const val EXTRA_SESSION_ID = "sessionId"
         private const val NO_SESSION = -1L
         private const val UPDATE_INTERVAL_MS = 2_000L

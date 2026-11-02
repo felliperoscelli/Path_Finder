@@ -11,6 +11,7 @@ import com.pathfinder.ui.OpenTrail
 import com.pathfinder.ui.PathFinderNavHost
 import com.pathfinder.ui.theme.PathFinderTheme
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.map
 
 class MainActivity : ComponentActivity() {
     /** Trilha a abrir quando o app é aberto por uma notificação. */
@@ -22,10 +23,12 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         if (savedInstanceState == null) handleIntent(intent)
+        val highContrastFlow = (application as PathFinderApp).container.settingsRepository.settings.map { it.highContrast }
         setContent {
             val openTrail by trailToOpen.collectAsStateWithLifecycle()
             val openScreen by screenToOpen.collectAsStateWithLifecycle()
-            PathFinderTheme {
+            val highContrast by highContrastFlow.collectAsStateWithLifecycle(initialValue = false)
+            PathFinderTheme(highContrast = highContrast) {
                 PathFinderNavHost(
                     openTrail = openTrail,
                     onTrailOpened = { trailToOpen.value = null },

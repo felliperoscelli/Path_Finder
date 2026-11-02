@@ -20,6 +20,7 @@ object Notifications {
     const val CHANNEL_DEVIATION = "deviation"
     const val ID_NAVIGATION = 3
     const val ID_DEVIATION = 4
+    const val ID_DEADLINE = 7
     const val CHANNEL_NETWORK = "network"
     const val CHANNEL_REMOTE_ALERT = "remote_alert"
     const val CHANNEL_TRAIL_RECEIVED = "trail_received"
@@ -30,6 +31,7 @@ object Notifications {
     const val CHANNEL_EMERGENCY = "emergency"
     const val ID_MESSAGE_BASE = 100_000
     const val ID_EMERGENCY_BASE = 200_000
+    const val ID_WATCH_BASE = 300_000
 
     fun createChannels(context: Context) {
         val manager = context.getSystemService(NotificationManager::class.java)
@@ -179,6 +181,18 @@ object Notifications {
             .setContentText(text)
             .setAutoCancel(true)
             .setContentIntent(openTrailIntent(context, trailId, navigation = true))
+            .build()
+
+    fun deadline(context: Context, trailId: Long, title: String, text: String, withReturnAction: Boolean) =
+        NotificationCompat.Builder(context, CHANNEL_DEVIATION)
+            .setSmallIcon(R.drawable.ic_stat_compass)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_REMINDER)
+            .setAutoCancel(true)
+            .setContentIntent(openTrailIntent(context, trailId, navigation = true))
+            .apply { if (withReturnAction) addAction(navigationAction(context, NavigationService.ACTION_RETURN_BASE, "Voltar à base")) }
             .build()
 
     fun deviation(context: Context, trailId: Long, detail: String) =

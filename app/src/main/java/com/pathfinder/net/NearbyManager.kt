@@ -86,15 +86,24 @@ class NearbyManager(
     val deviceId: String get() = identity.deviceId
     val name: String get() = localName
 
-    fun start(name: String, role: String) {
+    /** serviceId da Nearby derivado do código do evento: eventos diferentes nem se enxergam. */
+    private var serviceId = EventCode.serviceId("")
+
+    /** Código do evento com que a rede está ligada. */
+    var eventCode: String = ""
+        private set
+
+    fun start(name: String, role: String, event: String) {
         if (_state.value.running) return
         localName = name.ifBlank { "Sem nome" }.take(30).replace(SEP, " ")
         localRole = role
+        eventCode = EventCode.normalize(event)
+        serviceId = EventCode.serviceId(eventCode)
         _state.value = NetworkState(running = true)
         val endpointName = listOf(localRole, localName, identity.deviceId).joinToString(SEP)
-        client.startAdvertising(endpointName, SERVICE_ID, lifecycle, AdvertisingOptions.Builder().setStrategy(STRATEGY).build())
+        client.startAdvertising(endpointName, serviceId, lifecycle, AdvertisingOptions.Builder().setStrategy(STRATEGY).build())
             .addOnFailureListener { fail("Falha ao anunciar", it) }
-        client.startDiscovery(SERVICE_ID, discovery, DiscoveryOptions.Builder().setStrategy(STRATEGY).build())
+        client.startDiscovery(serviceId, discovery, DiscoveryOptions.Builder().setStrategy(STRATEGY).build())
             .addOnFailureListener { fail("Falha ao procurar aparelhos", it) }
     }
 
@@ -131,7 +140,7 @@ class NearbyManager(
 
     private val discovery = object : EndpointDiscoveryCallback() {
         override fun onEndpointFound(endpointId: String, info: DiscoveredEndpointInfo) {
-            if (info.serviceId != SERVICE_ID) return
+            if (info.serviceId != serviceId) return
             val peer = parsePeer(endpointId, info.endpointName, PeerStatus.FOUND) ?: return
             if (peer.deviceId == identity.deviceId) return
             val existing = _state.value.peers[endpointId]
@@ -235,7 +244,6 @@ class NearbyManager(
     }
 
     companion object {
-        const val SERVICE_ID = "com.pathfinder.mesh"
         private val STRATEGY = Strategy.P2P_CLUSTER
         private const val SEP = "|"
         private const val TAG = "NearbyManager"

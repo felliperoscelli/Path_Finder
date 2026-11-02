@@ -110,6 +110,12 @@ fun NetworkScreen(onBack: () -> Unit) {
                                 "Você aparece como: ${s.userName.ifBlank { "Sem nome" }} (${s.role.label})",
                                 style = MaterialTheme.typography.bodyMedium,
                             )
+                            Text(
+                                if (s.eventCode.isBlank()) "Sem código de evento: rede aberta (defina em Configurações)."
+                                else "Código do evento: ${s.eventCode}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (s.eventCode.isBlank()) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+                            )
                             if (s.userName.isBlank()) {
                                 Text(
                                     "Defina seu nome em Configurações para os outros aparelhos reconhecerem você.",
@@ -235,8 +241,9 @@ private fun MonitorRow(m: MonitorInfo, now: Long) {
                 val progress = if (m.finished) "pista concluída" else "próximo ${m.nextIndex + 1} de ${m.totalPoints}"
                 Text("${m.trailName} · $progress" + (m.lastReachedName?.let { " · último: $it" } ?: ""))
                 Text(
-                    "Atualizado há ${minutes(now - m.updatedAt)}" +
-                        (m.distanceToRouteMeters?.let { " · ${Formats.distance(it)} da rota" } ?: ""),
+                    "Atualizado há ${minutes(now - m.receivedAt)}" +
+                        (m.distanceToRouteMeters?.let { " · ${Formats.distance(it)} da rota" } ?: "") +
+                        (m.batteryPercent?.let { " · bateria $it%" } ?: ""),
                     style = MaterialTheme.typography.bodySmall,
                 )
             }

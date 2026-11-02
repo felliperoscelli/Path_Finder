@@ -26,6 +26,8 @@ class TrailLayer(
     private var trailLine: Polyline? = null
     private val trackLine = TrackLine(mapView, Color.rgb(30, 136, 229))
     private var progress: Pair<Int, Set<Int>>? = null
+    /** Modo desafio: esconde a linha da trilha e os pontos ainda não alcançados. */
+    private var hideUnreached = false
     private var shownPoints: List<TrailPointEntity>? = null
     private var shownTrackSize = -1
 
@@ -43,14 +45,17 @@ class TrailLayer(
     }
 
     /** Navegação: destaca o próximo ponto (verde) e esmaece os já alcançados. */
-    fun showProgress(nextIndex: Int, reached: Set<Int>) {
+    fun showProgress(nextIndex: Int, reached: Set<Int>, hideUnreached: Boolean = false) {
         progress = nextIndex to reached
+        this.hideUnreached = hideUnreached
         applyProgress()
     }
 
     private fun applyProgress() {
         val (next, reached) = progress ?: return
+        trailLine?.isEnabled = !hideUnreached
         markers.forEachIndexed { i, marker ->
+            marker.isEnabled = !hideUnreached || i in reached
             marker.alpha = if (i in reached && i != next) 0.4f else 1f
             if (i == next) {
                 marker.icon = marker.icon?.constantState?.newDrawable()?.mutate()?.apply { setTint(Color.rgb(46, 125, 50)) }

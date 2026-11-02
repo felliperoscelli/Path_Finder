@@ -3,6 +3,7 @@ package com.pathfinder.data.settings
 import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -38,6 +39,16 @@ data class AppSettings(
     val coordinateFormat: CoordinateFormat = CoordinateFormat.BOTH,
     /** Distância em que o monitor é considerado chegado ao ponto. */
     val arrivalRadiusMeters: Int = DEFAULT_ARRIVAL_RADIUS_M,
+    /** Código do evento: só aparelhos com o mesmo código formam a rede. */
+    val eventCode: String = "",
+    /** SHA-256 do PIN exigido para usar o perfil Coordenador (vazio = sem PIN). */
+    val coordinatorPinHash: String = "",
+    /** Minutos sem notícias de um grupo até o alarme do coordenador. */
+    val noSignalMinutes: Int = DEFAULT_NO_SIGNAL_MIN,
+    /** Manter a tela acesa durante a navegação. */
+    val keepScreenOn: Boolean = true,
+    /** Cores de alto contraste e letras maiores, para ler no sol. */
+    val highContrast: Boolean = false,
 ) {
     companion object {
         const val DEFAULT_DEVIATION_DISTANCE_M = 30
@@ -45,6 +56,7 @@ data class AppSettings(
         const val DEFAULT_STOP_DETECTION_S = 25
         const val DEFAULT_POSITION_INTERVAL_S = 30
         const val DEFAULT_ARRIVAL_RADIUS_M = 15
+        const val DEFAULT_NO_SIGNAL_MIN = 10
     }
 }
 
@@ -69,6 +81,11 @@ class SettingsRepository(context: Context) {
             p[STOP_DETECTION] = s.stopDetectionSeconds
             p[POSITION_INTERVAL] = s.positionIntervalSeconds
             p[COORDINATE_FORMAT] = s.coordinateFormat.name
+            p[EVENT_CODE] = s.eventCode
+            p[COORDINATOR_PIN] = s.coordinatorPinHash
+            p[NO_SIGNAL] = s.noSignalMinutes
+            p[KEEP_SCREEN_ON] = s.keepScreenOn
+            p[HIGH_CONTRAST] = s.highContrast
         }
     }
 
@@ -86,6 +103,11 @@ class SettingsRepository(context: Context) {
             coordinateFormat = p[COORDINATE_FORMAT]
                 ?.let { runCatching { CoordinateFormat.valueOf(it) }.getOrNull() }
                 ?: d.coordinateFormat,
+            eventCode = p[EVENT_CODE] ?: d.eventCode,
+            coordinatorPinHash = p[COORDINATOR_PIN] ?: d.coordinatorPinHash,
+            noSignalMinutes = p[NO_SIGNAL] ?: d.noSignalMinutes,
+            keepScreenOn = p[KEEP_SCREEN_ON] ?: d.keepScreenOn,
+            highContrast = p[HIGH_CONTRAST] ?: d.highContrast,
         )
     }
 
@@ -99,5 +121,10 @@ class SettingsRepository(context: Context) {
         val STOP_DETECTION = intPreferencesKey("stop_detection_s")
         val POSITION_INTERVAL = intPreferencesKey("position_interval_s")
         val COORDINATE_FORMAT = stringPreferencesKey("coordinate_format")
+        val EVENT_CODE = stringPreferencesKey("event_code")
+        val COORDINATOR_PIN = stringPreferencesKey("coordinator_pin_sha256")
+        val NO_SIGNAL = intPreferencesKey("no_signal_min")
+        val KEEP_SCREEN_ON = booleanPreferencesKey("keep_screen_on")
+        val HIGH_CONTRAST = booleanPreferencesKey("high_contrast")
     }
 }

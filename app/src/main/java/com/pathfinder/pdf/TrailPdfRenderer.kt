@@ -19,12 +19,17 @@ object TrailPdfRenderer {
     private const val FOOTER_SPACE = 24f
     private const val WRITABLE_MIN_ROW = 30f
     private const val CONTENT_WIDTH = PAGE_WIDTH - 2 * MARGIN
+    private const val TABLE_GAP = 14f
 
     private val titlePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
         textSize = 16f
         typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
     }
     private val headerPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 9.5f }
+    private val sectionPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+        textSize = 11f
+        typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+    }
     private val cellPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 8.5f }
     private val columnTitlePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
         textSize = 8.5f
@@ -41,32 +46,36 @@ object TrailPdfRenderer {
     }
     private val headerFill = Paint().apply { color = Color.rgb(225, 236, 228) }
 
+    /** Tabela já com o texto medido. */
+    private class LaidOutTable(
+        val title: StaticLayout?,
+        val widths: List<Float>,
+        val header: List<StaticLayout>,
+        val headerHeight: Float,
+        val rows: List<List<StaticLayout>>,
+        val heights: List<Float>,
+    )
+
     fun render(sheet: TrailSheet, out: File) {
-        val widths = columnWidths(sheet)
-        val headerRow = sheet.columns.mapIndexed { i, c -> layout(c.title, columnTitlePaint, widths[i], c.align) }
-        val headerRowHeight = rowHeight(headerRow, 0f)
-        val rows = sheet.rows.map { row ->
-            row.mapIndexed { i, text -> layout(text, cellPaint, widths[i], sheet.columns[i].align) }
+        val tables = sheet.tables.map { t ->
+            val widths = columnWidths(t.columns)
+            val header = t.columns.mapIndexed { i, c -> layout(c.title, columnTitlePaint, widths[i], c.align) }
+            val rows = t.rows.map { row -> row.mapIndexed { i, text -> layout(text, cellPaint, widths[i], t.columns[i].align) } }
+            val minRow = if (t.writableRows) WRITABLE_MIN_ROW else 0f
+            LaidOutTable(
+                title = t.title?.let { textBlock(it, sectionPaint) },
+                widths = widths,
+                header = header,
+                headerHeight = rowHeight(header, 0f),
+                rows = rows,
+                heights = rows.map { rowHeight(it, minRow) },
+            )
         }
-        val minRow = if (sheet.writableRows) WRITABLE_MIN_ROW else 0f
-        val heights = rows.map { rowHeight(it, minRow) }
-
-        val firstPageTop = MARGIN + titleBlockHeight(sheet)
-        val otherPagesTop = MARGIN + continuationHeight()
-        val pages = paginate(heights, firstPageTop + headerRowHeight, otherPagesTop + headerRowHeight)
-
+        // 1ª passada só conta as páginas (para o "Página x de y"); a 2ª desenha.
+        val pageCount = draw(sheet, tables, doc = null, totalPages = 0)
         val doc = PdfDocument()
         try {
-            pages.forEachIndexed { pageIndex, rowIndices ->
-                val info = PdfDocument.PageInfo.Builder(PAGE_WIDTH, PAGE_HEIGHT, pageIndex + 1).create()
-                val page = doc.startPage(info)
-                val canvas = page.canvas
-                var y = if (pageIndex == 0) drawTitleBlock(canvas, sheet) else drawContinuation(canvas, sheet)
-                y = drawRow(canvas, headerRow, widths, y, headerRowHeight, headerFill)
-                for (r in rowIndices) y = drawRow(canvas, rows[r], widths, y, heights[r], null)
-                drawFooter(canvas, "${sheet.footer} · Página ${pageIndex + 1} de ${pages.size}")
-                doc.finishPage(page)
-            }
+            draw(sheet, tables, doc, pageCount)
             out.parentFile?.mkdirs()
             out.outputStream().use(doc::writeTo)
         } finally {
@@ -74,25 +83,62 @@ object TrailPdfRenderer {
         }
     }
 
-    /** Divide as linhas em páginas. Uma página vazia é gerada se não houver pontos. */
-    private fun paginate(heights: List<Float>, firstTop: Float, otherTop: Float): List<List<Int>> {
+    /** Desenha (ou só mede, se [doc] for null) e retorna o número de páginas. */
+    private fun draw(sheet: TrailSheet, tables: List<LaidOutTable>, doc: PdfDocument?, totalPages: Int): Int {
         val bottom = PAGE_HEIGHT - MARGIN - FOOTER_SPACE
-        val pages = mutableListOf(mutableListOf<Int>())
-        var y = firstTop
-        heights.forEachIndexed { i, h ->
-            if (y + h > bottom && pages.last().isNotEmpty()) {
-                pages += mutableListOf<Int>()
-                y = otherTop
-            }
-            pages.last() += i
-            y += h
+        var pageNumber = 0
+        var page: PdfDocument.Page? = null
+        var y = 0f
+
+        fun finishPage() {
+            val p = page ?: return
+            drawFooter(p.canvas, "${sheet.footer} · Página $pageNumber de $totalPages")
+            doc?.finishPage(p)
+            page = null
         }
-        return pages
+
+        fun newPage() {
+            finishPage()
+            pageNumber++
+            page = doc?.startPage(PdfDocument.PageInfo.Builder(PAGE_WIDTH, PAGE_HEIGHT, pageNumber).create())
+            val canvas = page?.canvas
+            y = if (pageNumber == 1) {
+                if (canvas != null) drawTitleBlock(canvas, sheet) else MARGIN + titleBlockHeight(sheet)
+            } else {
+                if (canvas != null) drawContinuation(canvas, sheet) else MARGIN + continuationHeight()
+            }
+        }
+
+        newPage()
+        tables.forEach { t ->
+            val titleHeight = t.title?.let { it.height + 6f } ?: 0f
+            // Título + cabeçalho + 1ª linha precisam caber juntos.
+            val firstRow = t.heights.firstOrNull() ?: 0f
+            if (y + titleHeight + t.headerHeight + firstRow > bottom) newPage()
+            t.title?.let { title ->
+                page?.canvas?.let { drawText(it, title, MARGIN, y + 4f) }
+                y += titleHeight
+            }
+            y = drawRowOrSkip(page?.canvas, t.header, t.widths, y, t.headerHeight, headerFill)
+            t.rows.forEachIndexed { i, row ->
+                if (y + t.heights[i] > bottom) {
+                    newPage()
+                    y = drawRowOrSkip(page?.canvas, t.header, t.widths, y, t.headerHeight, headerFill)
+                }
+                y = drawRowOrSkip(page?.canvas, row, t.widths, y, t.heights[i], null)
+            }
+            y += TABLE_GAP
+        }
+        finishPage()
+        return pageNumber
     }
 
-    private fun columnWidths(sheet: TrailSheet): List<Float> {
-        val total = sheet.columns.sumOf { it.weight.toDouble() }.toFloat()
-        return sheet.columns.map { CONTENT_WIDTH * it.weight / total }
+    private fun drawRowOrSkip(canvas: Canvas?, cells: List<StaticLayout>, widths: List<Float>, top: Float, height: Float, fill: Paint?) =
+        if (canvas != null) drawRow(canvas, cells, widths, top, height, fill) else top + height
+
+    private fun columnWidths(columns: List<SheetColumn>): List<Float> {
+        val total = columns.sumOf { it.weight.toDouble() }.toFloat()
+        return columns.map { CONTENT_WIDTH * it.weight / total }
     }
 
     private fun layout(text: String, paint: TextPaint, width: Float, align: Align): StaticLayout {

@@ -65,3 +65,47 @@ class MonitorBoardTest {
         assertEquals(1, s.emergencies.size)
     }
 }
+
+class WatchdogTest {
+    private val min = 60_000L
+    private fun env(body: Body, at: Long) = Envelope(origin = "d1", originName = "x", createdAt = at, body = body)
+    private fun pos(t: Long, battery: Int? = 80, deadline: Long? = null, finished: Boolean = false) =
+        PositionUpdate(-17.7, -48.6, 5f, t, "u", "Pista", "Águias", "João", 1, 5,
+            batteryPercent = battery, deadlineAt = deadline, finished = finished)
+
+    @Test fun noSignalIsRaisedOnceAndClearsWithNews() {
+        var s = MonitorBoard.reduce(BoardState(), env(pos(0), 0), now = 0)
+        var (s2, raised) = MonitorBoard.watch(s, 5 * min, 10 * min)
+        assertTrue(raised.isEmpty())
+        val r = MonitorBoard.watch(s2, 11 * min, 10 * min)
+        s2 = r.first
+        assertEquals(listOf("d1" to WatchKind.NO_SIGNAL), r.second)
+        assertTrue(MonitorBoard.watch(s2, 12 * min, 10 * min).second.isEmpty()) // não repete
+        // Chega notícia (o relógio do monitor está 1 h atrasado: não importa).
+        s = MonitorBoard.reduce(s2, env(pos(-60 * min), -60 * min), now = 13 * min)
+        val after = MonitorBoard.watch(s, 14 * min, 10 * min)
+        assertTrue(after.first.watch.isEmpty())
+    }
+
+    @Test fun overdueAndLowBattery() {
+        val s = MonitorBoard.reduce(BoardState(), env(pos(0, battery = 12, deadline = 30 * min), 0), now = 0)
+        val (w1, r1) = MonitorBoard.watch(s, 5 * min, 60 * min)
+        assertEquals(listOf("d1" to WatchKind.LOW_BATTERY), r1)
+        val (_, r2) = MonitorBoard.watch(w1, 31 * min, 60 * min)
+        assertEquals(listOf("d1" to WatchKind.OVERDUE), r2)
+        // Terminou a pista: não está atrasado.
+        val done = MonitorBoard.reduce(BoardState(), env(pos(0, deadline = 30 * min, finished = true), 0), now = 0)
+        assertTrue(MonitorBoard.watch(done, 31 * min, 60 * min).second.isEmpty())
+    }
+
+    @Test fun endedNavigationIsNotWatched() {
+        var s = MonitorBoard.reduce(BoardState(), env(pos(0), 0), now = 0)
+        s = MonitorBoard.reduce(
+            s,
+            env(NavigationEnded(5 * min, "u", "Pista", "Águias", "João", 0, mapOf(0 to 1L), 5, 0, 0), 5 * min),
+            now = 5 * min,
+        )
+        assertTrue(s.monitors.getValue("d1").ended)
+        assertTrue(MonitorBoard.watch(s, 100 * min, 10 * min).second.isEmpty())
+    }
+}

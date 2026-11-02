@@ -16,6 +16,12 @@ data class NavigationState(
     val groupName: String = "",
     val status: NavigationStatus? = null,
     val lastFix: Location? = null,
+    /** Modo desafio: a tela não mostra distância nem direção dos pontos. */
+    val challengeMode: Boolean = false,
+    /** Hora limite desta navegação (epoch ms). */
+    val deadlineAt: Long? = null,
+    val deadlineReached: Boolean = false,
+    val batteryPercent: Int? = null,
 ) {
     val isActive: Boolean get() = sessionId != null
 }
@@ -37,6 +43,15 @@ object NavigationRuntime {
     fun skip(context: Context) = send(context, NavigationService.ACTION_SKIP)
     fun back(context: Context) = send(context, NavigationService.ACTION_BACK)
     fun silence(context: Context) = send(context, NavigationService.ACTION_SILENCE)
+    fun returnToBase(context: Context, reason: String? = null) {
+        if (!state.value.isActive) return
+        context.startService(
+            Intent(context, NavigationService::class.java)
+                .setAction(NavigationService.ACTION_RETURN_BASE)
+                .putExtra(NavigationService.EXTRA_REASON, reason),
+        )
+    }
+    fun resumeTrail(context: Context) = send(context, NavigationService.ACTION_RESUME_TRAIL)
 
     private fun send(context: Context, action: String) {
         if (!state.value.isActive) return

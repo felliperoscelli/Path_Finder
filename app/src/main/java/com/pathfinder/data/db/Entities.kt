@@ -29,7 +29,26 @@ data class TrailEntity(
     val deviationTimeSeconds: Int,
     /** Declinação magnética usada nos cálculos (graus; negativo = oeste). */
     val declinationDegrees: Double? = null,
+    /** Declinação digitada pelo coordenador (ex.: a da carta), em vez da calculada. */
+    @ColumnInfo(defaultValue = "0")
+    val declinationManual: Boolean = false,
+    /** Hora limite do dia, em minutos desde 0h (ex.: 17h = 1020), ou null. */
+    val deadlineMinutes: Int? = null,
+    /** Modo desafio: o monitor não vê distância nem direção dos pontos. */
+    @ColumnInfo(defaultValue = "0")
+    val challengeMode: Boolean = false,
+    /** Base para onde os grupos voltam; null = ponto de partida. */
+    val baseLatitude: Double? = null,
+    val baseLongitude: Double? = null,
 )
+
+/** Se o ponto é a base da trilha (definida, ou a partida quando não há base). */
+fun TrailEntity.isBase(point: TrailPointEntity): Boolean =
+    if (baseLatitude != null && baseLongitude != null) {
+        baseLatitude == point.latitude && baseLongitude == point.longitude
+    } else {
+        point.sequence == 0
+    }
 
 /** Ponto de controle da trilha, na ordem em que deve ser percorrido. */
 @Entity(
@@ -130,9 +149,30 @@ data class NavigationSessionEntity(
     /** Índices dos pontos alcançados, separados por vírgula. */
     val reachedPoints: String = "",
     val deviationAlerts: Int = 0,
+    /** "índice:hora" de cada ponto alcançado, separados por vírgula. */
+    @ColumnInfo(defaultValue = "")
+    val reachedTimes: String = "",
+    /** Tempo total fora da rota (soma dos desvios com alarme). */
+    @ColumnInfo(defaultValue = "0")
+    val offRouteMillis: Long = 0,
+    /** Percurso de outro aparelho (resumo recebido pela rede); null = feito neste aparelho. */
+    val remoteDevice: String? = null,
 ) {
     val reachedSet: Set<Int>
         get() = reachedPoints.split(',').mapNotNull { it.trim().toIntOrNull() }.toSet()
+
+    /** Índice do ponto → hora em que foi alcançado. */
+    val reachedTimeMap: Map<Int, Long>
+        get() = reachedTimes.split(',').mapNotNull { pair ->
+            val (i, t) = pair.split(':').takeIf { it.size == 2 } ?: return@mapNotNull null
+            val index = i.toIntOrNull() ?: return@mapNotNull null
+            val time = t.toLongOrNull() ?: return@mapNotNull null
+            index to time
+        }.toMap()
+
+    companion object {
+        fun encodeTimes(times: Map<Int, Long>) = times.toSortedMap().entries.joinToString(",") { "${it.key}:${it.value}" }
+    }
 }
 
 /** Período em que o grupo ficou fora da rota e o alarme disparou. */

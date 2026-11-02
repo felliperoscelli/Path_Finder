@@ -4,6 +4,7 @@ import com.pathfinder.data.db.TrailEntity
 import com.pathfinder.data.db.TrailPointEntity
 import com.pathfinder.data.settings.CoordinateFormat
 import com.pathfinder.geo.Formats
+import com.pathfinder.geo.TimeOfDay
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -26,6 +27,15 @@ enum class Align { START, CENTER, END }
 
 data class SheetColumn(val title: String, val weight: Float, val align: Align = Align.START)
 
+/** Uma tabela do documento (com título opcional acima dela). */
+data class SheetTable(
+    val title: String?,
+    val columns: List<SheetColumn>,
+    val rows: List<List<String>>,
+    /** Linhas com espaço para escrever à mão. */
+    val writableRows: Boolean = false,
+)
+
 /** Conteúdo da ficha, independente de como ela é desenhada. */
 data class TrailSheet(
     val title: String,
@@ -35,7 +45,11 @@ data class TrailSheet(
     /** Linhas com espaço para escrever à mão (modo só coordenadas). */
     val writableRows: Boolean,
     val footer: String,
-)
+    /** Tabelas adicionais depois da principal (ex.: tempos por trecho). */
+    val extraTables: List<SheetTable> = emptyList(),
+) {
+    val tables: List<SheetTable> get() = listOf(SheetTable(null, columns, rows, writableRows)) + extraTables
+}
 
 object TrailSheetBuilder {
     private val day = DateTimeFormatter.ofPattern("dd/MM/yyyy")
@@ -60,6 +74,7 @@ object TrailSheetBuilder {
             )
             add("Coordenadas: ${formatDescription(options.format)}")
             add(if (full) "${ordered.size} pontos · distância total ${Formats.distance(total)}" else "${ordered.size} pontos")
+            trail.deadlineMinutes?.let { add("Hora limite: ${TimeOfDay.format(it)}") }
             if (trail.notes.isNotBlank()) add(trail.notes)
         }
 

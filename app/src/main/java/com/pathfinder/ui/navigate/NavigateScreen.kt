@@ -26,6 +26,11 @@ import androidx.compose.material.icons.filled.Navigation
 import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Route
+import androidx.compose.material3.OutlinedIconButton
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -68,6 +73,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.pathfinder.data.db.NavigationSessionEntity
 import com.pathfinder.data.db.TrailWithPoints
 import com.pathfinder.geo.Formats
+import com.pathfinder.geo.TimeOfDay
 import com.pathfinder.navigation.NavigationRuntime
 import com.pathfinder.navigation.NavigationState
 import com.pathfinder.navigation.NavigationStatus
@@ -104,6 +110,7 @@ fun NavigateScreen(
     onBack: () -> Unit,
     onOpenSession: (Long) -> Unit,
     onOpenMessages: () -> Unit,
+    onOpenResults: (Long) -> Unit,
     viewModel: NavigateViewModel = viewModel(key = "nav-$trailId", factory = NavigateViewModel.factory(trailId)),
 ) {
     val context = LocalContext.current
@@ -131,6 +138,15 @@ fun NavigateScreen(
 
     val activeHere = runtime.isActive && runtime.trailId == trailId
     val status = runtime.status.takeIf { activeHere }
+    val challenge = trail?.trail?.challengeMode == true
+    var confirmReturn by remember { mutableStateOf(false) }
+
+    // Tela acesa durante a navegação (configurável).
+    val view = LocalView.current
+    DisposableEffect(activeHere, settings?.keepScreenOn) {
+        view.keepScreenOn = activeHere && settings?.keepScreenOn != false
+        onDispose { view.keepScreenOn = false }
+    }
 
     var pendingSession by remember { mutableStateOf<Long?>(null) }
     val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
@@ -155,16 +171,29 @@ fun NavigateScreen(
             framed = true
         }
     }
-    LaunchedEffect(creationTrack) { trailLayer.showTrack(creationTrack) }
+    LaunchedEffect(creationTrack, challenge) { trailLayer.showTrack(if (challenge) emptyList() else creationTrack) }
     LaunchedEffect(walked) { walkedLine.show(walked.map { GeoPoint(it.latitude, it.longitude) }) }
-    LaunchedEffect(status?.nextIndex, status?.reached) {
-        if (status != null) trailLayer.showProgress(status.nextIndex, status.reached) else trailLayer.showProgress(-1, emptySet())
+    LaunchedEffect(status?.nextIndex, status?.reached, challenge) {
+        if (status != null) {
+            trailLayer.showProgress(status.nextIndex, status.reached, hideUnreached = challenge)
+        } else {
+            trailLayer.showProgress(-1, emptySet(), hideUnreached = challenge)
+        }
     }
-    LaunchedEffect(runtime.lastFix, status?.nextIndex) {
+    LaunchedEffect(runtime.lastFix, status?.nextIndex, status?.returningToBase) {
         val fix = runtime.lastFix
-        val target = status?.let { trail?.orderedPoints?.getOrNull(it.nextIndex) }
+        val returning = status?.returningToBase == true
+        val target = when {
+            status == null -> null
+            returning -> trail?.trail?.let { t ->
+                if (t.baseLatitude != null && t.baseLongitude != null) GeoPoint(t.baseLatitude, t.baseLongitude)
+                else trail?.orderedPoints?.firstOrNull()?.let { GeoPoint(it.latitude, it.longitude) }
+            }
+            challenge -> null // modo desafio: sem linha até o ponto
+            else -> trail?.orderedPoints?.getOrNull(status.nextIndex)?.let { GeoPoint(it.latitude, it.longitude) }
+        }
         if (activeHere && fix != null && target != null) {
-            pointer.show(listOf(GeoPoint(fix.latitude, fix.longitude), GeoPoint(target.latitude, target.longitude)))
+            pointer.show(listOf(GeoPoint(fix.latitude, fix.longitude), target))
         } else {
             pointer.clear()
         }
@@ -211,6 +240,8 @@ fun NavigateScreen(
                     status = status,
                     onBack = { NavigationRuntime.back(context) },
                     onSkip = { NavigationRuntime.skip(context) },
+                    onReturn = { confirmReturn = true },
+                    onResume = { NavigationRuntime.resumeTrail(context) },
                     onFinish = { confirmFinish = true },
                 )
                 else -> StartPanel(
@@ -227,6 +258,7 @@ fun NavigateScreen(
                     sessions = sessions,
                     onStart = { group, monitor -> viewModel.createSession(group, monitor, ::launch) },
                     onOpenSession = onOpenSession,
+                    onOpenResults = { onOpenResults(trailId) },
                 )
             }
         },
@@ -238,8 +270,12 @@ fun NavigateScreen(
                     Modifier.align(Alignment.TopCenter).fillMaxWidth().padding(8.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
-                    NextPointCard(trail!!, status, runtime)
-                    RouteStatusBanner(status, onSilence = { NavigationRuntime.silence(context) })
+                    NextPointCard(trail!!, status, runtime, challenge)
+                    if (!status.returningToBase) RouteStatusBanner(status, onSilence = { NavigationRuntime.silence(context) })
+                    DeadlineBanner(runtime, status, onReturn = { confirmReturn = true })
+                    runtime.batteryPercent?.takeIf { it <= LOW_BATTERY }?.let { b ->
+                        Banner(Warning, "Bateria baixa ($b%): diminua o brilho da tela ou ligue o power bank.")
+                    }
                     latestUnread?.let { m ->
                         // Última mensagem não lida (ex.: resposta do coordenador).
                         Surface(
@@ -262,6 +298,18 @@ fun NavigateScreen(
         }
     }
 
+    if (confirmReturn) {
+        AlertDialog(
+            onDismissRequest = { confirmReturn = false },
+            title = { Text("Voltar à base?") },
+            text = { Text("O app passa a guiar até a base, e o alerta de desvio fica pausado. Dá para retomar a trilha depois.") },
+            confirmButton = {
+                TextButton(onClick = { confirmReturn = false; NavigationRuntime.returnToBase(context) }) { Text("Voltar à base") }
+            },
+            dismissButton = { TextButton(onClick = { confirmReturn = false }) { Text("Cancelar") } },
+        )
+    }
+
     if (confirmFinish) {
         AlertDialog(
             onDismissRequest = { confirmFinish = false },
@@ -276,12 +324,28 @@ fun NavigateScreen(
 }
 
 @Composable
-private fun NextPointCard(trail: TrailWithPoints, status: NavigationStatus, runtime: NavigationState) {
+private fun NextPointCard(trail: TrailWithPoints, status: NavigationStatus, runtime: NavigationState, challenge: Boolean) {
     val points = trail.orderedPoints
     val heading by rememberMagneticHeading()
     Surface(shape = MaterialTheme.shapes.large, tonalElevation = 4.dp, shadowElevation = 6.dp) {
         Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
+                if (status.returningToBase) {
+                    Text(
+                        if (status.arrivedAtBase) "Na base" else "Voltando à base",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = if (status.arrivedAtBase) OnRoute else MaterialTheme.colorScheme.onSurface,
+                    )
+                    Text(status.distanceToNextMeters?.let(Formats::distance) ?: "Aguardando GPS…", fontSize = 34.sp, fontWeight = FontWeight.Bold)
+                    status.magneticBearingToNext?.let {
+                        Text(
+                            "Azimute magnético ${Formats.azimuth(it)} · verdadeiro ${Formats.azimuth(status.trueBearingToNext)}",
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    }
+                    GpsAndBattery(runtime)
+                    return@Column
+                }
                 if (status.finished) {
                     Text("Pista concluída!", style = MaterialTheme.typography.titleLarge, color = OnRoute)
                     Text("${status.reached.size} de ${points.size} pontos alcançados")
@@ -292,6 +356,15 @@ private fun NextPointCard(trail: TrailWithPoints, status: NavigationStatus, runt
                     "Próximo: ${status.nextIndex + 1}. ${next?.name.orEmpty()}  (${status.nextIndex + 1} de ${points.size})",
                     style = MaterialTheme.typography.titleSmall,
                 )
+                if (challenge) {
+                    Text("Modo desafio", fontSize = 26.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        "Use a bússola e a ficha. O app avisa ao chegar no ponto e se o grupo sair da rota.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    GpsAndBattery(runtime)
+                    return@Column
+                }
                 Text(
                     status.distanceToNextMeters?.let(Formats::distance) ?: "Aguardando GPS…",
                     fontSize = 34.sp,
@@ -304,15 +377,13 @@ private fun NextPointCard(trail: TrailWithPoints, status: NavigationStatus, runt
                         style = MaterialTheme.typography.bodyMedium,
                     )
                 }
-                val fix = runtime.lastFix
-                if (fix != null && fix.hasAccuracy()) {
-                    Text("GPS ±${fix.accuracy.toInt()} m", style = MaterialTheme.typography.bodySmall)
-                }
+                GpsAndBattery(runtime)
             }
             // Seta apontando para o próximo ponto, relativa ao topo do celular.
             val bearing = status.magneticBearingToNext
             val h = heading
-            if (!status.finished && bearing != null && h != null) {
+            val showArrow = status.returningToBase || (!status.finished && !challenge)
+            if (showArrow && bearing != null && h != null) {
                 Icon(
                     Icons.Filled.Navigation,
                     contentDescription = "Direção do próximo ponto",
@@ -354,29 +425,90 @@ private fun RouteStatusBanner(status: NavigationStatus, onSilence: () -> Unit) {
 }
 
 @Composable
-private fun NavigationControls(status: NavigationStatus, onBack: () -> Unit, onSkip: () -> Unit, onFinish: () -> Unit) {
+private fun NavigationControls(
+    status: NavigationStatus,
+    onBack: () -> Unit,
+    onSkip: () -> Unit,
+    onReturn: () -> Unit,
+    onResume: () -> Unit,
+    onFinish: () -> Unit,
+) {
     Surface(tonalElevation = 3.dp, shadowElevation = 6.dp) {
         Row(
             Modifier.fillMaxWidth().navigationBarsPadding().padding(12.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            OutlinedButton(onClick = onBack, enabled = status.nextIndex > 0) {
-                Icon(Icons.Filled.SkipPrevious, null)
-                Text(" Anterior")
-            }
-            OutlinedButton(onClick = onSkip, enabled = !status.finished) {
-                Icon(Icons.Filled.SkipNext, null)
-                Text(" Pular")
+            if (status.returningToBase) {
+                OutlinedButton(onClick = onResume) {
+                    Icon(Icons.Filled.Route, null)
+                    Text(" Retomar trilha")
+                }
+            } else {
+                OutlinedIconButton(onClick = onBack, enabled = status.nextIndex > 0) {
+                    Icon(Icons.Filled.SkipPrevious, "Ponto anterior")
+                }
+                OutlinedIconButton(onClick = onSkip, enabled = !status.finished) {
+                    Icon(Icons.Filled.SkipNext, "Pular ponto")
+                }
+                OutlinedButton(onClick = onReturn) {
+                    Icon(Icons.Filled.Home, null)
+                    Text(" Base")
+                }
             }
             Button(
                 onClick = onFinish,
                 modifier = Modifier.weight(1f),
-                colors = if (status.finished) ButtonDefaults.buttonColors() else ButtonDefaults.buttonColors(containerColor = Danger),
+                colors = if (status.finished || status.arrivedAtBase) ButtonDefaults.buttonColors() else ButtonDefaults.buttonColors(containerColor = Danger),
             ) {
                 Icon(Icons.Filled.Flag, null)
                 Text(" Encerrar")
             }
         }
+    }
+}
+
+@Composable
+private fun GpsAndBattery(runtime: NavigationState) {
+    val parts = listOfNotNull(
+        runtime.lastFix?.takeIf { it.hasAccuracy() }?.let { "GPS ±${it.accuracy.toInt()} m" },
+        runtime.batteryPercent?.let { "bateria $it%" },
+    )
+    if (parts.isNotEmpty()) Text(parts.joinToString(" · "), style = MaterialTheme.typography.bodySmall)
+}
+
+@Composable
+private fun Banner(color: Color, text: String, action: (@Composable () -> Unit)? = null) {
+    Surface(color = color, contentColor = Color.White, shape = MaterialTheme.shapes.medium, shadowElevation = 4.dp) {
+        Row(
+            Modifier.fillMaxWidth().heightIn(min = 40.dp).padding(horizontal = 12.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(text, Modifier.weight(1f))
+            action?.invoke()
+        }
+    }
+}
+
+/** Hora limite: informa, avisa 30 min antes e, na hora, sugere voltar à base. */
+@Composable
+private fun DeadlineBanner(runtime: NavigationState, status: NavigationStatus, onReturn: () -> Unit) {
+    val deadline = runtime.deadlineAt ?: return
+    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) { while (true) { delay(15_000); now = System.currentTimeMillis() } }
+    val time = java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT).format(java.util.Date(deadline))
+    val left = (deadline - now) / 60_000
+    when {
+        now >= deadline && !status.returningToBase -> Banner(Danger, "Hora limite ($time)! Voltem à base.") {
+            FilledTonalButton(onClick = onReturn) { Text("Voltar") }
+        }
+        now >= deadline -> Unit
+        left <= 30 -> Banner(Warning, "Faltam $left min para a hora limite ($time).")
+        else -> Text(
+            "Hora limite: $time",
+            style = MaterialTheme.typography.labelMedium,
+            modifier = Modifier.padding(start = 4.dp),
+        )
     }
 }
 
@@ -389,6 +521,7 @@ private fun StartPanel(
     sessions: List<NavigationSessionEntity>,
     onStart: (group: String, monitor: String) -> Unit,
     onOpenSession: (Long) -> Unit,
+    onOpenResults: () -> Unit,
 ) {
     var group by rememberSaveable(defaultGroup) { mutableStateOf(defaultGroup) }
     var monitor by rememberSaveable(defaultMonitor) { mutableStateOf(defaultMonitor) }
@@ -404,6 +537,11 @@ private fun StartPanel(
                     "por ${trail.trail.deviationTimeSeconds / 60} min",
                 style = MaterialTheme.typography.bodySmall,
             )
+            val extras = listOfNotNull(
+                trail.trail.deadlineMinutes?.let { "Hora limite ${TimeOfDay.format(it)}" },
+                "Modo desafio: sem distância nem direção dos pontos".takeIf { trail.trail.challengeMode },
+            )
+            if (extras.isNotEmpty()) Text(extras.joinToString(" · "), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(group, { group = it }, label = { Text("Grupo") }, singleLine = true, modifier = Modifier.weight(1f))
                 OutlinedTextField(monitor, { monitor = it }, label = { Text("Monitor") }, singleLine = true, modifier = Modifier.weight(1f))
@@ -421,7 +559,10 @@ private fun StartPanel(
             }
             if (sessions.isNotEmpty()) {
                 HorizontalDivider()
-                Text("Percursos anteriores", style = MaterialTheme.typography.titleSmall)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Percursos anteriores", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                    TextButton(onClick = onOpenResults) { Text("Resultado") }
+                }
                 sessions.forEach { s ->
                     ListItem(
                         modifier = Modifier.clickable { onOpenSession(s.id) },
@@ -437,6 +578,8 @@ private fun StartPanel(
         }
     }
 }
+
+private const val LOW_BATTERY = 20
 
 private fun elapsed(ms: Long): String {
     val s = (ms / 1000).coerceAtLeast(0)

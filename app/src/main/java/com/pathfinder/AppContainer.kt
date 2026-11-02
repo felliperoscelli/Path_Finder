@@ -34,5 +34,7 @@ class AppContainer(context: Context) {
     val nearby = NearbyManager(context.applicationContext, identity, appScope)
     val mesh = MeshCore(identity.deviceId, nearby, RoomMessageStore(database), appScope)
     val chatRepository = ChatRepository(database)
-    val networkHub = NetworkHub(context.applicationContext, nearby, mesh, trailRepository, chatRepository, settingsRepository, appScope)
+    val networkHub = NetworkHub(
+        context.applicationContext, nearby, mesh, trailRepository, navigationRepository, chatRepository, settingsRepository, appScope,
+    )
 }
