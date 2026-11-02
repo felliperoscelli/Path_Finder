@@ -13,6 +13,8 @@ import com.pathfinder.PathFinderApp
 import com.pathfinder.data.settings.Pin
 import com.pathfinder.net.EventCode
 import com.pathfinder.net.MeshService
+import com.pathfinder.power.PowerMode
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -55,6 +57,7 @@ import com.pathfinder.data.settings.UserRole
 @Composable
 fun SettingsScreen(
     onBack: () -> Unit,
+    onOpenDiagnostics: () -> Unit,
     viewModel: SettingsViewModel = viewModel(factory = SettingsViewModel.Factory),
 ) {
     val settings by viewModel.settings.collectAsStateWithLifecycle()
@@ -72,7 +75,7 @@ fun SettingsScreen(
         if (s == null) {
             Box(Modifier.fillMaxSize().padding(padding), Alignment.Center) { CircularProgressIndicator() }
         } else {
-            SettingsContent(s, viewModel::update, Modifier.padding(padding))
+            SettingsContent(s, viewModel::update, onOpenDiagnostics, Modifier.padding(padding))
         }
     }
 }
@@ -82,6 +85,7 @@ fun SettingsScreen(
 private fun SettingsContent(
     s: AppSettings,
     update: ((AppSettings) -> AppSettings) -> Unit,
+    onOpenDiagnostics: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -156,6 +160,29 @@ private fun SettingsContent(
         NumberField("Alarme se um grupo ficar sem notícias por (min)", s.noSignalMinutes, 2..120) { v ->
             update { it.copy(noSignalMinutes = v) }
         }
+
+        HorizontalDivider()
+        Section("Bateria e testes")
+        Text("Economia de bateria na navegação")
+        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+            PowerMode.entries.forEachIndexed { i, mode ->
+                SegmentedButton(
+                    selected = s.powerMode == mode,
+                    onClick = { update { it.copy(powerMode = mode) } },
+                    shape = SegmentedButtonDefaults.itemShape(i, PowerMode.entries.size),
+                ) { Text(mode.label) }
+            }
+        }
+        Text(
+            when (s.powerMode) {
+                PowerMode.AUTO -> "Lê o GPS com menos frequência quando o grupo está parado e com bateria abaixo de 30%."
+                PowerMode.ALWAYS -> "GPS a cada 5 s (10 s parado) e posição com o dobro do intervalo, sempre."
+                PowerMode.OFF -> "GPS a cada 2 s o tempo todo (mais preciso, gasta mais)."
+            },
+            style = MaterialTheme.typography.bodySmall,
+        )
+        SwitchRow("Permitir ensaio com caminhada simulada", s.allowSimulation) { v -> update { it.copy(allowSimulation = v) } }
+        OutlinedButton(onClick = onOpenDiagnostics) { Text("Diagnóstico de campo") }
 
         HorizontalDivider()
         Section("Tela")

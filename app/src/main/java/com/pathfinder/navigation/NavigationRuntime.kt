@@ -22,6 +22,11 @@ data class NavigationState(
     val deadlineAt: Long? = null,
     val deadlineReached: Boolean = false,
     val batteryPercent: Int? = null,
+    /** Economia de bateria ativa e o motivo. */
+    val powerSaving: Boolean = false,
+    val powerReason: String? = null,
+    /** Ensaio com caminhada simulada (não é GPS real). */
+    val simulated: Boolean = false,
 ) {
     val isActive: Boolean get() = sessionId != null
 }
@@ -32,10 +37,17 @@ object NavigationRuntime {
 
     internal fun update(transform: (NavigationState) -> NavigationState) = _state.update(transform)
 
-    fun start(context: Context, sessionId: Long) {
+    /**
+     * Inicia a navegação. Com [simulationSpeed] > 0 é um ensaio: a posição vem de uma
+     * caminhada simulada pela trilha, [simulationSpeed] vezes mais rápida,
+     * com um desvio forçado se [simulateDeviation].
+     */
+    fun start(context: Context, sessionId: Long, simulationSpeed: Int = 0, simulateDeviation: Boolean = false) {
         val intent = Intent(context, NavigationService::class.java)
             .setAction(NavigationService.ACTION_START)
             .putExtra(NavigationService.EXTRA_SESSION_ID, sessionId)
+            .putExtra(NavigationService.EXTRA_SIM_SPEED, simulationSpeed)
+            .putExtra(NavigationService.EXTRA_SIM_DEVIATION, simulateDeviation)
         ContextCompat.startForegroundService(context, intent)
     }
 

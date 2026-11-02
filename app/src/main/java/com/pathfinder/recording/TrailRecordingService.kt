@@ -105,6 +105,7 @@ class TrailRecordingService : Service() {
         val id = trailId.takeIf { it != NO_TRAIL } ?: return
         RecordingSession.update { it.copy(lastFix = location) }
         val accuracy = if (location.hasAccuracy()) location.accuracy else null
+        container.diagnostics.onFix(accuracy, location.time)
         if (accuracy != null && accuracy > MAX_ACCURACY_M) return
 
         if (shouldSave(location)) {

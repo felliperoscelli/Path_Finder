@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Route
 import androidx.compose.material3.OutlinedIconButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.material3.AlertDialog
@@ -54,6 +55,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -149,8 +151,11 @@ fun NavigateScreen(
     }
 
     var pendingSession by remember { mutableStateOf<Long?>(null) }
+    // Ensaio: velocidade (0 = GPS real) e desvio forçado.
+    var simSpeed by remember { mutableIntStateOf(0) }
+    var simDeviation by remember { mutableStateOf(false) }
     val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
-        pendingSession?.let { NavigationRuntime.start(context, it) }
+        pendingSession?.let { NavigationRuntime.start(context, it, simSpeed, simDeviation) }
         pendingSession = null
     }
     fun launch(sessionId: Long) {
@@ -158,7 +163,7 @@ fun NavigateScreen(
             pendingSession = sessionId
             notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         } else {
-            NavigationRuntime.start(context, sessionId)
+            NavigationRuntime.start(context, sessionId, simSpeed, simDeviation)
         }
     }
 
@@ -256,7 +261,16 @@ fun NavigateScreen(
                         else -> null
                     },
                     sessions = sessions,
-                    onStart = { group, monitor -> viewModel.createSession(group, monitor, ::launch) },
+                    onStart = { group, monitor ->
+                        simSpeed = 0
+                        viewModel.createSession(group, monitor, ::launch)
+                    },
+                    allowSimulation = settings?.allowSimulation == true,
+                    onSimulate = { group, monitor, speed, deviation ->
+                        simSpeed = speed
+                        simDeviation = deviation
+                        viewModel.createSession("[SIM] $group", monitor, ::launch)
+                    },
                     onOpenSession = onOpenSession,
                     onOpenResults = { onOpenResults(trailId) },
                 )
@@ -270,6 +284,7 @@ fun NavigateScreen(
                     Modifier.align(Alignment.TopCenter).fillMaxWidth().padding(8.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
+                    if (runtime.simulated) Banner(Color(0xFF6A1B9A), "ENSAIO: posição simulada, não é o GPS real.")
                     NextPointCard(trail!!, status, runtime, challenge)
                     if (!status.returningToBase) RouteStatusBanner(status, onSilence = { NavigationRuntime.silence(context) })
                     DeadlineBanner(runtime, status, onReturn = { confirmReturn = true })
@@ -473,6 +488,7 @@ private fun GpsAndBattery(runtime: NavigationState) {
     val parts = listOfNotNull(
         runtime.lastFix?.takeIf { it.hasAccuracy() }?.let { "GPS ±${it.accuracy.toInt()} m" },
         runtime.batteryPercent?.let { "bateria $it%" },
+        "economia de bateria".takeIf { runtime.powerSaving },
     )
     if (parts.isNotEmpty()) Text(parts.joinToString(" · "), style = MaterialTheme.typography.bodySmall)
 }
@@ -520,6 +536,8 @@ private fun StartPanel(
     blockedReason: String?,
     sessions: List<NavigationSessionEntity>,
     onStart: (group: String, monitor: String) -> Unit,
+    allowSimulation: Boolean,
+    onSimulate: (group: String, monitor: String, speed: Int, deviation: Boolean) -> Unit,
     onOpenSession: (Long) -> Unit,
     onOpenResults: () -> Unit,
 ) {
@@ -556,6 +574,27 @@ private fun StartPanel(
             ) {
                 Icon(Icons.Filled.Navigation, null)
                 Text(" Começar")
+            }
+            if (allowSimulation) {
+                var speed by remember { mutableIntStateOf(5) }
+                var deviation by remember { mutableStateOf(true) }
+                HorizontalDivider()
+                Text("Ensaio (caminhada simulada)", style = MaterialTheme.typography.titleSmall)
+                Text(
+                    "Percorre a trilha sem sair do lugar, para testar alarmes, rede e painel. O grupo aparece como [SIM].",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf(1, 5, 20).forEach { v ->
+                        FilterChip(selected = speed == v, onClick = { speed = v }, label = { Text("${v}x") })
+                    }
+                    FilterChip(selected = deviation, onClick = { deviation = !deviation }, label = { Text("Forçar desvio") })
+                }
+                OutlinedButton(
+                    onClick = { onSimulate(group, monitor, speed, deviation) },
+                    enabled = blockedReason == null && group.isNotBlank() && monitor.isNotBlank(),
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Ensaiar") }
             }
             if (sessions.isNotEmpty()) {
                 HorizontalDivider()

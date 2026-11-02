@@ -6,6 +6,7 @@ import com.pathfinder.data.NavigationRepository
 import com.pathfinder.data.OfflineAreaRepository
 import com.pathfinder.data.TrailRepository
 import com.pathfinder.data.db.AppDatabase
+import com.pathfinder.diagnostics.Diagnostics
 import com.pathfinder.data.settings.SettingsRepository
 import com.pathfinder.geo.AndroidDeclinationProvider
 import com.pathfinder.map.OfflineMapManager
@@ -34,7 +35,9 @@ class AppContainer(context: Context) {
     val nearby = NearbyManager(context.applicationContext, identity, appScope)
     val mesh = MeshCore(identity.deviceId, nearby, RoomMessageStore(database), appScope)
     val chatRepository = ChatRepository(database)
+    val diagnostics = Diagnostics(context.applicationContext, nearby, mesh, appScope)
     val networkHub = NetworkHub(
-        context.applicationContext, nearby, mesh, trailRepository, navigationRepository, chatRepository, settingsRepository, appScope,
+        context.applicationContext, nearby, mesh, trailRepository, navigationRepository, chatRepository, settingsRepository,
+        diagnostics, appScope,
     )
 }

@@ -15,7 +15,7 @@ A especificação completa está em [`docs/especificacao.md`](docs/especificacao
 | 5 | Nearby Connections entre dois aparelhos | ✅ |
 | 6 | Rede em malha com repasse e armazenamento | ✅ |
 | 7 | Painel do coordenador, alertas remotos e mensagens | ✅ |
-| 8 | Testes de campo e ajustes de bateria | — |
+| 8 | Testes de campo e ajustes de bateria | ✅ (ferramentas prontas; teste em campo pendente) |
 
 ## Etapa 1 – o que já funciona
 
@@ -188,6 +188,25 @@ Observação: a rede aceita qualquer aparelho com o Path Finder e a rede ligada 
 - A última mensagem não lida aparece também na tela de navegação do monitor.
 - **Banco de dados v5** com o histórico de mensagens, com migração.
 
+## Etapa 8 – testes de campo e ajustes de bateria
+
+- **Economia de bateria** (Configurações → Bateria e testes: Automática, Sempre ou Desligada),
+  regras em `power/PowerPolicy.kt`:
+  - parado há 2 min: GPS a cada 10 s em vez de 2 s (volta ao normal ao andar);
+  - bateria ≤ 30% (ou "Sempre"): GPS a cada 5 s e posição com o dobro do intervalo (mín. 60 s);
+  - bateria ≤ 10%: GPS a cada 10 s e posição com o triplo (mín. 120 s);
+  - carregando ou "Desligada": sempre no máximo.
+  A tela de navegação mostra "economia de bateria" quando ativa.
+- **Diagnóstico de campo** (Configurações → Diagnóstico de campo): consumo de bateria em %/hora
+  e estimativa de duração, qualidade do GPS (precisão mediana e 90%), conexões e quedas da
+  rede, mensagens da malha e alertas. Tudo fica num registro `.csv` (abre em planilha) para
+  exportar e enviar depois do teste.
+- **Ensaio com caminhada simulada** (ligar em Configurações): na tela de navegação, "Ensaiar"
+  percorre a trilha sem sair do lugar, a 1x, 5x ou 20x, com opção de forçar um desvio. Serve
+  para testar alarmes, rede, painel, mensagens e resultado com os celulares na mesa. O grupo
+  aparece como `[SIM]`.
+- **Roteiro do teste de campo**: [`docs/teste-de-campo.md`](docs/teste-de-campo.md).
+
 ## Recursos extras (segurança, criação de pistas e campo)
 
 1. **Código do evento** (Configurações → Evento): só celulares com o mesmo código formam a
@@ -237,6 +256,7 @@ Requisitos: JDK 17+ e Android SDK (platform 35). Abra a pasta no Android Studio 
 app/src/main/java/com/pathfinder/
 ├── PathFinderApp.kt / AppContainer.kt   # inicialização e dependências
 ├── data/                                # Room, repositórios e configurações
+├── diagnostics/                         # registro e resumo do diagnóstico de campo
 ├── geo/                                 # UTM, Vincenty, declinação, detecção de parada
 ├── navigation/                          # regras da navegação, alarme e serviço do monitor
 ├── location/                            # posição atual para mensagens e emergência
@@ -244,7 +264,8 @@ app/src/main/java/com/pathfinder/
 ├── pdf/                                 # conteúdo e desenho da ficha, imprimir/compartilhar
 ├── net/                                 # Nearby Connections, protocolo, painel de monitores
 ├── results/                             # resultado: classificação, tempos por trecho e PDF
+├── power/                               # regras de economia de bateria
 ├── recording/                           # serviço de gravação pelo GPS e notificações
 ├── transfer/                            # trilha em JSON/GPX, exportar e importar
-└── ui/                                  # telas Compose (home, map, points, navigate, dashboard, messages, results, network, offline, settings)
+└── ui/                                  # telas Compose (home, map, points, navigate, dashboard, messages, results, network, diagnostics, offline, settings)
 ```

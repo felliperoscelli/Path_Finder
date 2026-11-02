@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.pathfinder.power.PowerMode
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -49,6 +50,10 @@ data class AppSettings(
     val keepScreenOn: Boolean = true,
     /** Cores de alto contraste e letras maiores, para ler no sol. */
     val highContrast: Boolean = false,
+    /** Economia de bateria na navegação. */
+    val powerMode: PowerMode = PowerMode.AUTO,
+    /** Mostra o botão de ensaio com caminhada simulada. */
+    val allowSimulation: Boolean = false,
 ) {
     companion object {
         const val DEFAULT_DEVIATION_DISTANCE_M = 30
@@ -86,6 +91,8 @@ class SettingsRepository(context: Context) {
             p[NO_SIGNAL] = s.noSignalMinutes
             p[KEEP_SCREEN_ON] = s.keepScreenOn
             p[HIGH_CONTRAST] = s.highContrast
+            p[POWER_MODE] = s.powerMode.name
+            p[ALLOW_SIMULATION] = s.allowSimulation
         }
     }
 
@@ -108,6 +115,8 @@ class SettingsRepository(context: Context) {
             noSignalMinutes = p[NO_SIGNAL] ?: d.noSignalMinutes,
             keepScreenOn = p[KEEP_SCREEN_ON] ?: d.keepScreenOn,
             highContrast = p[HIGH_CONTRAST] ?: d.highContrast,
+            powerMode = p[POWER_MODE]?.let { runCatching { PowerMode.valueOf(it) }.getOrNull() } ?: d.powerMode,
+            allowSimulation = p[ALLOW_SIMULATION] ?: d.allowSimulation,
         )
     }
 
@@ -126,5 +135,7 @@ class SettingsRepository(context: Context) {
         val NO_SIGNAL = intPreferencesKey("no_signal_min")
         val KEEP_SCREEN_ON = booleanPreferencesKey("keep_screen_on")
         val HIGH_CONTRAST = booleanPreferencesKey("high_contrast")
+        val POWER_MODE = stringPreferencesKey("power_mode")
+        val ALLOW_SIMULATION = booleanPreferencesKey("allow_simulation")
     }
 }

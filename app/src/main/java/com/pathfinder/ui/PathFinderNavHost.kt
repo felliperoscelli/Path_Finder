@@ -9,6 +9,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.pathfinder.MainActivity
 import com.pathfinder.ui.dashboard.DashboardScreen
+import com.pathfinder.ui.diagnostics.DiagnosticsScreen
 import com.pathfinder.ui.home.HomeScreen
 import com.pathfinder.ui.messages.MessagesScreen
 import com.pathfinder.ui.map.MapScreen
@@ -32,6 +33,7 @@ private object Routes {
     const val MESSAGES = "messages?to={to}"
     const val DASHBOARD = "dashboard"
     const val RESULTS = "results/{trailId}"
+    const val DIAGNOSTICS = "diagnostics"
 
     fun results(trailId: Long) = "results/$trailId"
 
@@ -159,7 +161,10 @@ fun PathFinderNavHost(
             NetworkScreen(onBack = { nav.popBackStack() })
         }
         composable(Routes.SETTINGS) {
-            SettingsScreen(onBack = { nav.popBackStack() })
+            SettingsScreen(onBack = { nav.popBackStack() }, onOpenDiagnostics = { nav.navigate(Routes.DIAGNOSTICS) })
+        }
+        composable(Routes.DIAGNOSTICS) {
+            DiagnosticsScreen(onBack = { nav.popBackStack() })
         }
     }
 }

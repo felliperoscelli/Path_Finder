@@ -25,6 +25,9 @@ import com.pathfinder.data.db.TrackSource
 import com.pathfinder.geo.Formats
 import com.pathfinder.net.BackOnRoute
 import com.pathfinder.geo.TimeOfDay
+import com.pathfinder.power.MotionTracker
+import com.pathfinder.power.PowerMode
+import com.pathfinder.power.PowerPolicy
 import com.pathfinder.net.DeviationAlert
 import com.pathfinder.net.NavigationEnded
 import com.pathfinder.net.PointReached
@@ -66,6 +69,14 @@ class NavigationService : Service() {
     private var deadline: DeadlineTracker? = null
     private var challengeMode = false
     private var ticker: kotlinx.coroutines.Job? = null
+    private var simulationSpeed = 0
+    private var simulateDeviation = false
+    private var simJob: kotlinx.coroutines.Job? = null
+    private val motion = MotionTracker()
+    private var powerMode = PowerMode.AUTO
+    private var basePublishMs = 30_000L
+    private var gpsIntervalMs = PowerPolicy.NORMAL_GPS_MS
+    private val diagnostics by lazy { container.diagnostics }
 
     private val callback = object : LocationCallback() {
         override fun onLocationResult(result: LocationResult) {
@@ -84,7 +95,11 @@ class NavigationService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val action = intent?.action
         when {
-            action == ACTION_START -> start(intent.getLongExtra(EXTRA_SESSION_ID, NO_SESSION))
+            action == ACTION_START -> start(
+                intent.getLongExtra(EXTRA_SESSION_ID, NO_SESSION),
+                intent.getIntExtra(EXTRA_SIM_SPEED, 0),
+                intent.getBooleanExtra(EXTRA_SIM_DEVIATION, false),
+            )
             action == ACTION_STOP -> finish()
             // Reinício pelo sistema (processo encerrado): o último comando é reenviado
             // sem a sessão carregada. Retoma a sessão ativa do banco e ignora o comando.
@@ -117,7 +132,7 @@ class NavigationService : Service() {
         }
     }
 
-    private fun start(id: Long) {
+    private fun start(id: Long, simSpeed: Int = 0, simDeviation: Boolean = false) {
         goForeground("Navegação", "Iniciando…")
         if (id == NO_SESSION || !hasLocationPermission()) {
             stopEverything()
@@ -125,7 +140,10 @@ class NavigationService : Service() {
         }
         if (id == sessionId) return
         if (sessionId != NO_SESSION) fused.removeLocationUpdates(callback)
+        simJob?.cancel()
         sessionId = id
+        simulationSpeed = simSpeed
+        simulateDeviation = simDeviation
         scope.launch {
             val session = repo.getSession(id)
             val r = session?.let { repo.loadRoute(it.trailId) }
@@ -137,7 +155,9 @@ class NavigationService : Service() {
             trailId = session.trailId
             groupName = session.groupName
             monitorName = session.monitorName
-            positionIntervalMs = settings.positionIntervalSeconds * 1000L
+            basePublishMs = settings.positionIntervalSeconds * 1000L
+            positionIntervalMs = basePublishMs
+            powerMode = settings.powerMode
             lastPublishedAt = 0L
             startedAt = session.startedAt
             reachedTimes.clear()
@@ -166,9 +186,15 @@ class NavigationService : Service() {
                     challengeMode = challengeMode,
                     deadlineAt = deadline?.deadlineAt,
                     batteryPercent = batteryPercent(),
+                    simulated = simulationSpeed > 0,
                 )
             }
-            requestUpdates()
+            diagnostics.log(
+                "NAVEGACAO",
+                "início: ${r.trailName} · grupo ${session.groupName}" +
+                    if (simulationSpeed > 0) " · SIMULAÇÃO ${simulationSpeed}x" + (if (simulateDeviation) " com desvio" else "") else "",
+            )
+            if (simulationSpeed > 0) startSimulation(r, session.nextPointIndex) else requestUpdates(PowerPolicy.NORMAL_GPS_MS)
             updateNotification()
             // Hora limite e bateria são conferidas mesmo sem leitura de GPS.
             ticker?.cancel()
@@ -182,16 +208,42 @@ class NavigationService : Service() {
     }
 
     @Suppress("MissingPermission") // verificado em hasLocationPermission()
-    private fun requestUpdates() {
-        val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, UPDATE_INTERVAL_MS)
-            .setMinUpdateIntervalMillis(UPDATE_INTERVAL_MS / 2)
+    private fun requestUpdates(intervalMs: Long) {
+        gpsIntervalMs = intervalMs
+        fused.removeLocationUpdates(callback)
+        val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, intervalMs)
+            .setMinUpdateIntervalMillis(intervalMs / 2)
             .build()
         fused.requestLocationUpdates(request, callback, Looper.getMainLooper())
+    }
+
+    /**
+     * Ensaio: em vez do GPS, uma caminhada simulada pela trilha (a partir do
+     * último ponto alcançado), [simulationSpeed] vezes mais rápida.
+     */
+    private fun startSimulation(r: NavigationRoute, nextIndex: Int) {
+        val from = (nextIndex - 1).coerceAtLeast(0)
+        val fixes = SimulatedWalk.generate(r.points.drop(from), deviateOnLeg = if (simulateDeviation) 0 else null)
+        val t0 = System.currentTimeMillis()
+        simJob = scope.launch {
+            for (f in fixes) {
+                val location = Location("simulacao").apply {
+                    latitude = f.position.latitude
+                    longitude = f.position.longitude
+                    accuracy = f.accuracyMeters
+                    time = t0 + f.offsetMillis
+                }
+                onLocation(location)
+                kotlinx.coroutines.delay(SIM_STEP_MS / simulationSpeed)
+            }
+        }
     }
 
     private fun onLocation(location: Location) {
         val e = engine ?: return
         val accuracy = if (location.hasAccuracy()) location.accuracy else null
+        diagnostics.onFix(accuracy, location.time, simulated = simulationSpeed > 0)
+        motion.onFix(com.pathfinder.geo.LatLon(location.latitude, location.longitude), location.time)
         val events = e.onFix(location.latitude, location.longitude, accuracy, location.time)
         NavigationRuntime.update { it.copy(status = e.status, lastFix = location) }
         saveTrack(location, accuracy)
@@ -223,6 +275,7 @@ class NavigationService : Service() {
             }
             is NavigationEvent.DeviationAlarm -> {
                 alerts.alarm()
+                diagnostics.onAlarm("desvio local: ${event.distanceMeters.toInt()} m da rota" + if (event.repeat) " (repetição)" else "")
                 if (!event.repeat) {
                     scope.launch {
                         openDeviationId = repo.openDeviation(
@@ -316,7 +369,9 @@ class NavigationService : Service() {
     }
 
     private fun tick(now: Long) {
-        NavigationRuntime.update { it.copy(batteryPercent = batteryPercent()) }
+        val battery = batteryPercent()
+        NavigationRuntime.update { it.copy(batteryPercent = battery) }
+        applyPowerPlan(now, battery)
         val d = deadline ?: return
         when (d.check(now)) {
             DeadlineEvent.WARNING -> {
@@ -332,6 +387,7 @@ class NavigationService : Service() {
             }
             DeadlineEvent.REACHED -> {
                 alerts.alarm()
+                diagnostics.onAlarm("hora limite")
                 NavigationRuntime.update { it.copy(deadlineReached = true) }
                 notify(
                     Notifications.ID_DEADLINE,
@@ -340,6 +396,17 @@ class NavigationService : Service() {
             }
             null -> Unit
         }
+    }
+
+    /** Ajusta o GPS e o envio de posição à bateria e ao movimento (ver [PowerPolicy]). */
+    private fun applyPowerPlan(now: Long, battery: Int?) {
+        if (simulationSpeed > 0) return
+        val charging = getSystemService(android.os.BatteryManager::class.java)?.isCharging == true
+        val plan = PowerPolicy.plan(powerMode, battery, charging, motion.stationaryFor(now), basePublishMs)
+        positionIntervalMs = plan.publishIntervalMillis
+        if (plan.gpsIntervalMillis != gpsIntervalMs && engine != null) requestUpdates(plan.gpsIntervalMillis)
+        NavigationRuntime.update { it.copy(powerSaving = plan.saving, powerReason = plan.reason) }
+        diagnostics.onPowerPlan(plan.reason, plan.gpsIntervalMillis, plan.publishIntervalMillis)
     }
 
     private fun batteryPercent(): Int? =
@@ -420,6 +487,9 @@ class NavigationService : Service() {
     }
 
     private fun stopEverything() {
+        if (sessionId != NO_SESSION) diagnostics.log("NAVEGACAO", "fim")
+        simJob?.cancel()
+        simJob = null
         ticker?.cancel()
         ticker = null
         cancel(Notifications.ID_DEADLINE)
@@ -468,10 +538,12 @@ class NavigationService : Service() {
         const val ACTION_RETURN_BASE = "com.pathfinder.navigation.RETURN_BASE"
         const val ACTION_RESUME_TRAIL = "com.pathfinder.navigation.RESUME_TRAIL"
         const val EXTRA_REASON = "reason"
+        const val EXTRA_SIM_SPEED = "simSpeed"
+        const val EXTRA_SIM_DEVIATION = "simDeviation"
+        private const val SIM_STEP_MS = 2_000L
         private const val TICK_MS = 30_000L
         const val EXTRA_SESSION_ID = "sessionId"
         private const val NO_SESSION = -1L
-        private const val UPDATE_INTERVAL_MS = 2_000L
         private const val MAX_TRACK_ACCURACY_M = 50f
         private const val MIN_TRACK_DISTANCE_M = 5f
         private const val MAX_TRACK_GAP_MS = 30_000L

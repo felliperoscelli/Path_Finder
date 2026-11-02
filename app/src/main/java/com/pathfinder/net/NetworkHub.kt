@@ -12,6 +12,7 @@ import com.pathfinder.data.db.ChatMessageEntity
 import com.pathfinder.data.settings.AppSettings
 import com.pathfinder.data.settings.SettingsRepository
 import com.pathfinder.data.settings.UserRole
+import com.pathfinder.diagnostics.Diagnostics
 import com.pathfinder.navigation.AlertPlayer
 import com.pathfinder.navigation.NavigationRuntime
 import com.pathfinder.recording.Notifications
@@ -53,6 +54,7 @@ class NetworkHub(
     private val navigation: NavigationRepository,
     private val chat: ChatRepository,
     settings: SettingsRepository,
+    private val diagnostics: Diagnostics,
     private val scope: CoroutineScope,
 ) {
     private val _board = MutableStateFlow(BoardState())
@@ -217,7 +219,10 @@ class NetworkHub(
         if (role == UserRole.REPEATER) return
         chat.save(envelope.toChat(outgoing = false))
         val from = body.senderGroup?.let { "$it · ${envelope.originName}" } ?: envelope.originName
-        if (body.urgent && role == UserRole.COORDINATOR) alerts.alarm()
+        if (body.urgent && role == UserRole.COORDINATOR) {
+            alerts.alarm()
+            diagnostics.onAlarm("mensagem urgente de $from: ${body.text}")
+        }
         notify(
             Notifications.ID_MESSAGE_BASE + (envelope.origin.hashCode() and 0xFFFF),
             Notifications.message(context, if (envelope.to != null) "$from (para você)" else from, body.text, body.urgent),
@@ -271,6 +276,7 @@ class NetworkHub(
                 WatchKind.LOW_BATTERY -> Triple("Bateria baixa: $who", "Celular do monitor com ${m.batteryPercent}%.", false)
             }
             if (alarm) alerts.alarm()
+            diagnostics.onAlarm(title)
             notify(watchNotificationId(device, kind), Notifications.remoteAlert(context, title, text))
         }
     }
@@ -283,8 +289,9 @@ class NetworkHub(
         if (role == UserRole.REPEATER) return
         _board.update { MonitorBoard.reduce(it, envelope) }
         chat.save(envelope.toChat(outgoing = false))
-        if (role == UserRole.COORDINATOR) alerts.alarm()
         val who = body.groupName?.let { "$it · ${body.monitorName}" } ?: body.monitorName
+        diagnostics.onAlarm("emergência de $who (${envelope.hops} saltos)")
+        if (role == UserRole.COORDINATOR) alerts.alarm()
         val where = if (body.latitude != null && body.longitude != null) {
             "Posição ${"%.6f, %.6f".format(java.util.Locale.US, body.latitude, body.longitude)}"
         } else {
@@ -304,6 +311,7 @@ class NetworkHub(
         when (body) {
             is DeviationAlert -> {
                 if ((device to body.since) !in silenced) alerts.alarm()
+                diagnostics.onAlarm("desvio recebido de ${body.groupName}")
                 notify(
                     notificationId(device),
                     Notifications.remoteAlert(
