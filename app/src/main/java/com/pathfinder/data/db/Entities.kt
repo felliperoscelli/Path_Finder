@@ -85,17 +85,77 @@ enum class TrackSource {
             onDelete = ForeignKey.CASCADE,
         ),
     ],
-    indices = [Index(value = ["trailId", "source", "timestamp"])],
+    indices = [Index(value = ["trailId", "source", "timestamp"]), Index(value = ["sessionId", "timestamp"])],
 )
 data class TrackPointEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val trailId: Long,
     val source: TrackSource,
+    /** Sessão de navegação, quando [source] é NAVIGATION. */
+    val sessionId: Long? = null,
     val latitude: Double,
     val longitude: Double,
     val altitude: Double? = null,
     val accuracyMeters: Float? = null,
     val timestamp: Long,
+)
+
+/** Uma vez em que um grupo percorreu a trilha, para acompanhamento e revisão. */
+@Entity(
+    tableName = "navigation_sessions",
+    foreignKeys = [
+        ForeignKey(
+            entity = TrailEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["trailId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index("trailId")],
+)
+data class NavigationSessionEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val trailId: Long,
+    val groupName: String,
+    val monitorName: String,
+    val startedAt: Long,
+    /** null enquanto a navegação está em andamento. */
+    val endedAt: Long? = null,
+    /** Próximo ponto a alcançar (igual ao número de pontos quando terminou). */
+    val nextPointIndex: Int = 0,
+    /** Índices dos pontos alcançados, separados por vírgula. */
+    val reachedPoints: String = "",
+    val deviationAlerts: Int = 0,
+) {
+    val reachedSet: Set<Int>
+        get() = reachedPoints.split(',').mapNotNull { it.trim().toIntOrNull() }.toSet()
+}
+
+/** Período em que o grupo ficou fora da rota e o alarme disparou. */
+@Entity(
+    tableName = "deviation_events",
+    foreignKeys = [
+        ForeignKey(
+            entity = NavigationSessionEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["sessionId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index("sessionId")],
+)
+data class DeviationEventEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val sessionId: Long,
+    /** Quando o grupo saiu da rota. */
+    val startedAt: Long,
+    /** Quando o alarme disparou. */
+    val alarmAt: Long,
+    /** Quando voltou à rota (null se não voltou). */
+    val endedAt: Long? = null,
+    val latitude: Double,
+    val longitude: Double,
+    val maxDistanceMeters: Double,
 )
 
 /** Área de mapa baixada para uso offline. */

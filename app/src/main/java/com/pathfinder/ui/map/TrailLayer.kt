@@ -24,7 +24,8 @@ class TrailLayer(
     private val trailOverlays = mutableListOf<Overlay>()
     private val markers = mutableListOf<Marker>()
     private var trailLine: Polyline? = null
-    private var trackLine: Polyline? = null
+    private val trackLine = TrackLine(mapView, Color.rgb(30, 136, 229))
+    private var progress: Pair<Int, Set<Int>>? = null
     private var shownPoints: List<TrailPointEntity>? = null
     private var shownTrackSize = -1
 
@@ -34,16 +35,29 @@ class TrailLayer(
             markers.forEach { it.isDraggable = value }
         }
 
+    /** Percurso gravado na criação da trilha. */
     fun showTrack(track: List<TrackPointEntity>) {
         if (track.size == shownTrackSize) return
         shownTrackSize = track.size
-        val line = trackLine ?: Polyline(mapView).apply {
-            outlinePaint.color = Color.rgb(30, 136, 229)
-            outlinePaint.strokeWidth = 6f
-            trackLine = this
-            insertBelowMyLocation(listOf(this))
+        trackLine.show(track.map { GeoPoint(it.latitude, it.longitude) })
+    }
+
+    /** Navegação: destaca o próximo ponto (verde) e esmaece os já alcançados. */
+    fun showProgress(nextIndex: Int, reached: Set<Int>) {
+        progress = nextIndex to reached
+        applyProgress()
+    }
+
+    private fun applyProgress() {
+        val (next, reached) = progress ?: return
+        markers.forEachIndexed { i, marker ->
+            marker.alpha = if (i in reached && i != next) 0.4f else 1f
+            if (i == next) {
+                marker.icon = marker.icon?.constantState?.newDrawable()?.mutate()?.apply { setTint(Color.rgb(46, 125, 50)) }
+            } else {
+                marker.setDefaultIcon()
+            }
         }
-        line.setPoints(track.map { GeoPoint(it.latitude, it.longitude) })
         mapView.invalidate()
     }
 
@@ -73,6 +87,7 @@ class TrailLayer(
             }
             trailOverlays += markers
             insertBelowMyLocation(trailOverlays)
+            applyProgress()
         }
         mapView.invalidate()
     }
@@ -97,7 +112,7 @@ class TrailLayer(
     /** Ajusta o enquadramento para mostrar a trilha e o percurso inteiros. */
     fun zoomToTrail() {
         val geo = shownPoints.orEmpty().map { GeoPoint(it.latitude, it.longitude) } +
-            (trackLine?.actualPoints ?: emptyList())
+            trackLine.points
         if (geo.isEmpty()) return
         mapView.post {
             if (geo.size == 1) {

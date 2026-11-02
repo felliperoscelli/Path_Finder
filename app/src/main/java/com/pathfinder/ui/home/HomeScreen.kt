@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -16,6 +17,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Route
 import androidx.compose.material.icons.filled.Settings
@@ -45,6 +47,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.pathfinder.data.db.TrailSummary
+import com.pathfinder.data.settings.UserRole
+import com.pathfinder.navigation.NavigationRuntime
 import com.pathfinder.recording.RecordingSession
 import java.text.DateFormat
 import java.util.Date
@@ -53,6 +57,7 @@ import java.util.Date
 @Composable
 fun HomeScreen(
     onOpenTrail: (Long) -> Unit,
+    onNavigateTrail: (Long) -> Unit,
     onOpenMap: () -> Unit,
     onOpenOfflineMaps: () -> Unit,
     onOpenSettings: () -> Unit,
@@ -61,6 +66,7 @@ fun HomeScreen(
     val trails by viewModel.trailList.collectAsStateWithLifecycle()
     val settings by viewModel.appSettings.collectAsStateWithLifecycle()
     val recording by RecordingSession.state.collectAsStateWithLifecycle()
+    val navigation by NavigationRuntime.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var showNewTrail by rememberSaveable { mutableStateOf(false) }
     var pendingDelete by rememberSaveable { mutableStateOf<Long?>(null) }
@@ -109,7 +115,13 @@ fun HomeScreen(
                     TrailRow(
                         summary = summary,
                         recording = recording.trailId == summary.trail.id,
-                        onClick = { onOpenTrail(summary.trail.id) },
+                        navigating = navigation.trailId == summary.trail.id,
+                        // Monitor vai direto para a navegação; coordenador, para o mapa de edição.
+                        onClick = {
+                            if (settings.role == UserRole.MONITOR) onNavigateTrail(summary.trail.id)
+                            else onOpenTrail(summary.trail.id)
+                        },
+                        onNavigate = { onNavigateTrail(summary.trail.id) },
                         onDelete = { pendingDelete = summary.trail.id },
                     )
                 }
@@ -136,6 +148,7 @@ fun HomeScreen(
             confirmButton = {
                 TextButton(onClick = {
                     if (recording.trailId == id) RecordingSession.stop(context)
+                    if (navigation.trailId == id) NavigationRuntime.stop(context)
                     viewModel.deleteTrail(id)
                     pendingDelete = null
                 }) { Text("Apagar") }
@@ -146,7 +159,14 @@ fun HomeScreen(
 }
 
 @Composable
-private fun TrailRow(summary: TrailSummary, recording: Boolean, onClick: () -> Unit, onDelete: () -> Unit) {
+private fun TrailRow(
+    summary: TrailSummary,
+    recording: Boolean,
+    navigating: Boolean,
+    onClick: () -> Unit,
+    onNavigate: () -> Unit,
+    onDelete: () -> Unit,
+) {
     val date = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT)
         .format(Date(summary.trail.updatedAt))
     val points = when (summary.pointCount) {
@@ -158,9 +178,22 @@ private fun TrailRow(summary: TrailSummary, recording: Boolean, onClick: () -> U
         modifier = Modifier.clickable(onClick = onClick),
         leadingContent = { Icon(Icons.Filled.Route, null) },
         headlineContent = { Text(summary.trail.name) },
-        supportingContent = { Text(if (recording) "● Gravando · $points" else "$points · $date") },
+        supportingContent = {
+            Text(
+                when {
+                    recording -> "● Gravando · $points"
+                    navigating -> "● Navegando · $points"
+                    else -> "$points · $date"
+                }
+            )
+        },
         trailingContent = {
-            IconButton(onClick = onDelete) { Icon(Icons.Filled.Delete, "Apagar") }
+            Row {
+                IconButton(onClick = onNavigate, enabled = summary.pointCount > 0) {
+                    Icon(Icons.Filled.Explore, "Navegar")
+                }
+                IconButton(onClick = onDelete) { Icon(Icons.Filled.Delete, "Apagar") }
+            }
         },
     )
 }

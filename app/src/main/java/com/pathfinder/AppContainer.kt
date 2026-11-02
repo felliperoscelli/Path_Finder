@@ -1,6 +1,7 @@
 package com.pathfinder
 
 import android.content.Context
+import com.pathfinder.data.NavigationRepository
 import com.pathfinder.data.OfflineAreaRepository
 import com.pathfinder.data.TrailRepository
 import com.pathfinder.data.db.AppDatabase
@@ -14,6 +15,7 @@ class AppContainer(context: Context) {
 
     val trailRepository = TrailRepository(database, AndroidDeclinationProvider)
     val offlineAreaRepository = OfflineAreaRepository(database)
+    val navigationRepository = NavigationRepository(database)
     val settingsRepository = SettingsRepository(context)
     val offlineMapManager = OfflineMapManager(context.applicationContext)
 }

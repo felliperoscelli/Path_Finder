@@ -11,7 +11,7 @@ A especificação completa está em [`docs/especificacao.md`](docs/especificacao
 | 1 | Estrutura do projeto, banco local e mapa offline com OpenTopoMap | ✅ |
 | 2 | Gravação de trilha, pontos, azimute, declinação e UTM | ✅ |
 | 3 | Edição de pontos e ficha em PDF | ✅ |
-| 4 | Navegação do monitor e alerta de desvio local | — |
+| 4 | Navegação do monitor e alerta de desvio local | ✅ |
 | 5 | Nearby Connections entre dois aparelhos | — |
 | 6 | Rede em malha com repasse e armazenamento | — |
 | 7 | Painel do coordenador, alertas remotos e mensagens | — |
@@ -82,6 +82,33 @@ A especificação completa está em [`docs/especificacao.md`](docs/especificacao
   - depois de gerada: imprimir (serviço de impressão do Android), compartilhar
     (WhatsApp, e-mail…) ou salvar em uma pasta.
 
+## Etapa 4 – navegação do monitor e alerta de desvio
+
+- **Iniciar**: ícone de bússola na lista de trilhas (ou no mapa da trilha). Com o perfil
+  *Monitor*, tocar na trilha já abre a navegação. O monitor informa grupo e nome.
+- **Tela de navegação**: mapa offline com a trilha, posição atual, linha tracejada até o
+  próximo ponto (verde) e pontos alcançados esmaecidos. Cartão com o próximo ponto,
+  distância, azimute magnético e verdadeiro e uma seta que aponta para o ponto usando a
+  bússola do celular.
+- **Chegada**: o ponto é alcançado ao entrar no raio de chegada (padrão 15 m, nas
+  configurações), com som curto e vibração. Chegar a um ponto à frente pula os anteriores;
+  há botões para pular ou voltar um ponto.
+- **Alerta de desvio**: dispara quando o grupo fica mais longe da rota que o limite da
+  trilha (padrão 30 m) por todo o tempo configurado (padrão 5 min). Toca o som de alarme
+  e vibra, mesmo com a tela desligada, e repete a cada minuto até voltar à rota ou ser
+  silenciado. Uma faixa colorida mostra: na rota (verde), afastado com cronômetro
+  (laranja) ou fora da rota (vermelho).
+  - A rota é a linha reta entre os pontos **ou** o percurso gravado pelo coordenador
+    (vale a menor distância), para não acusar desvio quando o grupo contorna um
+    obstáculo pelo mesmo caminho.
+  - O alerta só começa depois de chegar ao ponto de partida.
+  - Leituras de GPS com imprecisão acima de 50 m são ignoradas.
+- **Trajeto real**: gravado em segundo plano e salvo por percurso. Em "Percursos
+  anteriores" é possível rever no mapa o caminho do grupo (laranja), os pontos alcançados,
+  onde cada alerta de desvio aconteceu, a duração e a distância percorrida.
+- **Banco de dados v2** com migração a partir da v1 (sessões de navegação, eventos de
+  desvio e `sessionId` no trajeto), testada contra o esquema exportado.
+
 ## Como compilar
 
 Requisitos: JDK 17+ e Android SDK (platform 35). Abra a pasta no Android Studio ou:
@@ -98,8 +125,9 @@ app/src/main/java/com/pathfinder/
 ├── PathFinderApp.kt / AppContainer.kt   # inicialização e dependências
 ├── data/                                # Room, repositórios e configurações
 ├── geo/                                 # UTM, Vincenty, declinação, detecção de parada
+├── navigation/                          # regras da navegação, alarme e serviço do monitor
 ├── map/                                 # OpenTopoMap, cálculo de tiles e download offline
 ├── pdf/                                 # conteúdo e desenho da ficha, imprimir/compartilhar
 ├── recording/                           # serviço de gravação pelo GPS e notificações
-└── ui/                                  # telas Compose (home, map, points, offline, settings)
+└── ui/                                  # telas Compose (home, map, points, navigate, offline, settings)
 ```

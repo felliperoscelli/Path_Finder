@@ -106,6 +106,12 @@ private fun SettingsContent(
         }
 
         HorizontalDivider()
+        Section("Navegação do monitor")
+        NumberField("Raio de chegada ao ponto (m)", s.arrivalRadiusMeters, 5..100) { v ->
+            update { it.copy(arrivalRadiusMeters = v) }
+        }
+
+        HorizontalDivider()
         Section("Criação de trilha")
         NumberField("Tempo parado para sugerir ponto (s)", s.stopDetectionSeconds, 5..300) { v ->
             update { it.copy(stopDetectionSeconds = v) }

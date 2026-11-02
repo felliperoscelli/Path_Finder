@@ -61,6 +61,15 @@ interface TrackPointDao {
     @Insert
     suspend fun insert(point: TrackPointEntity): Long
 
+    @Query("SELECT * FROM track_points WHERE sessionId = :sessionId ORDER BY timestamp")
+    fun observeSession(sessionId: Long): Flow<List<TrackPointEntity>>
+
+    @Query("SELECT * FROM track_points WHERE trailId = :trailId AND source = :source ORDER BY timestamp")
+    suspend fun getTrack(trailId: Long, source: TrackSource): List<TrackPointEntity>
+
+    @Query("DELETE FROM track_points WHERE sessionId = :sessionId")
+    suspend fun deleteSession(sessionId: Long)
+
     @Query("DELETE FROM track_points WHERE trailId = :trailId AND source = :source")
     suspend fun clear(trailId: Long, source: TrackSource)
 }
@@ -75,4 +84,40 @@ interface OfflineAreaDao {
 
     @Delete
     suspend fun delete(area: OfflineAreaEntity)
+}
+
+@Dao
+interface NavigationDao {
+    @Insert
+    suspend fun insertSession(session: NavigationSessionEntity): Long
+
+    @Update
+    suspend fun updateSession(session: NavigationSessionEntity)
+
+    @Query("SELECT * FROM navigation_sessions WHERE id = :id")
+    suspend fun getSession(id: Long): NavigationSessionEntity?
+
+    @Query("SELECT * FROM navigation_sessions WHERE id = :id")
+    fun observeSession(id: Long): Flow<NavigationSessionEntity?>
+
+    @Query("SELECT * FROM navigation_sessions WHERE trailId = :trailId ORDER BY startedAt DESC")
+    fun observeSessions(trailId: Long): Flow<List<NavigationSessionEntity>>
+
+    @Query("SELECT * FROM navigation_sessions WHERE endedAt IS NULL ORDER BY startedAt DESC LIMIT 1")
+    suspend fun getActiveSession(): NavigationSessionEntity?
+
+    @Query("DELETE FROM navigation_sessions WHERE id = :id")
+    suspend fun deleteSession(id: Long)
+
+    @Insert
+    suspend fun insertDeviation(event: DeviationEventEntity): Long
+
+    @Update
+    suspend fun updateDeviation(event: DeviationEventEntity)
+
+    @Query("SELECT * FROM deviation_events WHERE id = :id")
+    suspend fun getDeviation(id: Long): DeviationEventEntity?
+
+    @Query("SELECT * FROM deviation_events WHERE sessionId = :sessionId ORDER BY startedAt")
+    fun observeDeviations(sessionId: Long): Flow<List<DeviationEventEntity>>
 }

@@ -41,6 +41,11 @@
             android:exported="false"
             android:foregroundServiceType="location" />
 
+        <service
+            android:name=".navigation.NavigationService"
+            android:exported="false"
+            android:foregroundServiceType="location" />
+
         <!-- Fotos dos pontos tiradas com o app de câmera -->
         <provider
             android:name="androidx.core.content.FileProvider"

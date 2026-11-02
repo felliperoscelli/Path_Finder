@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.AddLocationAlt
 import androidx.compose.material.icons.filled.CenterFocusStrong
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.FiberManualRecord
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Stop
@@ -58,6 +59,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.pathfinder.data.db.TrailWithPoints
 import com.pathfinder.geo.Formats
+import com.pathfinder.navigation.NavigationRuntime
 import com.pathfinder.recording.RecordingSession
 import com.pathfinder.recording.RecordingState
 import com.pathfinder.ui.components.TopoMap
@@ -82,6 +84,7 @@ fun MapScreen(
     trailId: Long?,
     onBack: () -> Unit,
     onOpenPoints: (Long) -> Unit,
+    onNavigate: (Long) -> Unit,
     viewModel: MapViewModel = viewModel(key = "map-$trailId", factory = MapViewModel.factory(trailId)),
 ) {
     val context = LocalContext.current
@@ -108,6 +111,7 @@ fun MapScreen(
     val scope = rememberCoroutineScope()
 
     val recordingThis = trailId != null && recording.trailId == trailId
+    val navigating by NavigationRuntime.state.collectAsStateWithLifecycle()
     val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
         // A gravação funciona mesmo sem notificações; elas só avisam com a tela desligada.
         if (trailId != null) RecordingSession.start(context, trailId)
@@ -174,6 +178,9 @@ fun MapScreen(
                         IconButton(onClick = { trailLayer.zoomToTrail() }) {
                             Icon(Icons.Filled.CenterFocusStrong, "Ver trilha inteira")
                         }
+                        IconButton(onClick = { onNavigate(trailId) }) {
+                            Icon(Icons.Filled.Explore, "Navegar")
+                        }
                         IconButton(onClick = { onOpenPoints(trailId) }) {
                             Icon(Icons.AutoMirrored.Filled.List, "Lista de pontos")
                         }
@@ -188,6 +195,7 @@ fun MapScreen(
                     trail = t,
                     recording = recording,
                     recordingThis = recordingThis,
+                    navigating = navigating.isActive,
                     onStart = ::startRecording,
                     onStop = { RecordingSession.stop(context) },
                     onMarkPoint = ::markPointHere,
@@ -287,6 +295,7 @@ private fun RecordingPanel(
     trail: TrailWithPoints,
     recording: RecordingState,
     recordingThis: Boolean,
+    navigating: Boolean,
     onStart: () -> Unit,
     onStop: () -> Unit,
     onMarkPoint: () -> Unit,
@@ -318,7 +327,9 @@ private fun RecordingPanel(
                 )
             } else {
                 Text(
-                    if (recording.isRecording) "Outra trilha está sendo gravada" else "${points.size} pontos · ${Formats.distance(total)}",
+                    if (recording.isRecording) "Outra trilha está sendo gravada"
+                    else if (navigating) "Navegação em andamento: encerre-a para gravar"
+                    else "${points.size} pontos · ${Formats.distance(total)}",
                     style = MaterialTheme.typography.titleSmall,
                 )
                 Text(
@@ -333,7 +344,7 @@ private fun RecordingPanel(
                         Text(" Parar")
                     }
                 } else {
-                    FilledTonalButton(onClick = onStart, enabled = !recording.isRecording) {
+                    FilledTonalButton(onClick = onStart, enabled = !recording.isRecording && !navigating) {
                         Icon(Icons.Filled.FiberManualRecord, null)
                         Text(" Gravar")
                     }

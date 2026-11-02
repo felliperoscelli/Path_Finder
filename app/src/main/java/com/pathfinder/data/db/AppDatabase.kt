@@ -11,8 +11,10 @@ import androidx.room.RoomDatabase
         TrailPointEntity::class,
         TrackPointEntity::class,
         OfflineAreaEntity::class,
+        NavigationSessionEntity::class,
+        DeviationEventEntity::class,
     ],
-    version = 1,
+    version = 2,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -20,9 +22,12 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun trailPointDao(): TrailPointDao
     abstract fun trackPointDao(): TrackPointDao
     abstract fun offlineAreaDao(): OfflineAreaDao
+    abstract fun navigationDao(): NavigationDao
 
     companion object {
         fun build(context: Context): AppDatabase =
-            Room.databaseBuilder(context, AppDatabase::class.java, "pathfinder.db").build()
+            Room.databaseBuilder(context, AppDatabase::class.java, "pathfinder.db")
+                .addMigrations(*Migrations.ALL)
+                .build()
     }
 }
