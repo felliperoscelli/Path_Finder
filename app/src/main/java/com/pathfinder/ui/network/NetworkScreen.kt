@@ -43,6 +43,7 @@ import com.pathfinder.PathFinderApp
 import com.pathfinder.data.settings.UserRole
 import com.pathfinder.geo.Formats
 import com.pathfinder.net.MeshService
+import com.pathfinder.net.MeshStats
 import com.pathfinder.net.MonitorInfo
 import com.pathfinder.net.Peer
 import com.pathfinder.net.PeerStatus
@@ -57,6 +58,7 @@ fun NetworkScreen(onBack: () -> Unit) {
     val container = remember { (context.applicationContext as PathFinderApp).container }
     val network by container.nearby.state.collectAsStateWithLifecycle()
     val board by container.networkHub.board.collectAsStateWithLifecycle()
+    val mesh by container.mesh.stats.collectAsStateWithLifecycle()
     val settings by container.settingsRepository.settings.collectAsStateWithLifecycle(initialValue = null)
     val permissions = rememberNearbyPermissions(onGranted = { MeshService.start(context) })
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
@@ -147,6 +149,8 @@ fun NetworkScreen(onBack: () -> Unit) {
                 }
             }
 
+            item { MeshStatsCard(mesh) }
+
             if (network.running) {
                 item { Section("Aparelhos (${network.connected.size} conectados)") }
                 if (network.peers.isEmpty()) {
@@ -167,6 +171,26 @@ fun NetworkScreen(onBack: () -> Unit) {
                 }
                 items(board.monitors.values.sortedBy { it.groupName }, key = { it.deviceId }) { MonitorRow(it, now) }
             }
+        }
+    }
+}
+
+/** Números da malha: o que está guardado para entregar e o que foi repassado. */
+@Composable
+fun MeshStatsCard(stats: MeshStats) {
+    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text("Rede em malha", style = MaterialTheme.typography.titleSmall)
+            Text(
+                "Cada aparelho repassa as mensagens dos outros. O que não puder ser entregue fica " +
+                    "guardado e sai quando outro aparelho se conectar. Alertas passam na frente.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Text(
+                "Guardadas: ${stats.stored} · criadas aqui: ${stats.originated} · recebidas: ${stats.received} · " +
+                    "repassadas: ${stats.relayed} · enviadas: ${stats.sent}",
+                style = MaterialTheme.typography.bodyMedium,
+            )
         }
     }
 }

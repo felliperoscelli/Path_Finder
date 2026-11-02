@@ -26,6 +26,10 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.SnackbarHost
@@ -58,6 +62,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.pathfinder.PathFinderApp
 import com.pathfinder.data.db.TrailSummary
+import com.pathfinder.net.MeshService
+import com.pathfinder.ui.components.rememberNearbyPermissions
 import kotlinx.coroutines.launch
 import com.pathfinder.data.settings.UserRole
 import com.pathfinder.navigation.NavigationRuntime
@@ -139,13 +145,16 @@ fun HomeScreen(
             list == null -> Box(Modifier.fillMaxSize().padding(padding), Alignment.Center) {
                 CircularProgressIndicator()
             }
-            list.isEmpty() -> EmptyState(Modifier.padding(padding))
+            list.isEmpty() && settings.role != UserRole.REPEATER -> EmptyState(Modifier.padding(padding))
             else -> LazyColumn(
                 contentPadding = PaddingValues(
                     top = padding.calculateTopPadding(),
                     bottom = padding.calculateBottomPadding() + 88.dp,
                 ),
             ) {
+                if (settings.role == UserRole.REPEATER) {
+                    item { RepeaterPanel(onOpenNetwork) }
+                }
                 items(list, key = { it.trail.id }) { summary ->
                     TrailRow(
                         summary = summary,
@@ -231,6 +240,47 @@ private fun TrailRow(
             }
         },
     )
+}
+
+/** Repetidor: celular fixo num ponto intermediário, ligado a um power bank. */
+@Composable
+private fun RepeaterPanel(onOpenNetwork: () -> Unit) {
+    val context = LocalContext.current
+    val container = remember { (context.applicationContext as PathFinderApp).container }
+    val network by container.nearby.state.collectAsStateWithLifecycle()
+    val stats by container.mesh.stats.collectAsStateWithLifecycle()
+    val permissions = rememberNearbyPermissions(onGranted = { MeshService.start(context) })
+    Card(
+        modifier = Modifier.fillMaxWidth().padding(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Modo repetidor", style = MaterialTheme.typography.titleLarge)
+            Text(
+                "Deixe este celular num ponto intermediário da pista, ligado a um power bank. " +
+                    "Ele não usa o GPS: só repassa as mensagens e posições entre os outros aparelhos.",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Text(
+                if (network.running) "Rede ligada · ${network.connected.size} aparelho(s) conectado(s)" else "Rede desligada",
+                style = MaterialTheme.typography.titleMedium,
+            )
+            Text(
+                "Guardadas: ${stats.stored} · repassadas: ${stats.relayed} · enviadas: ${stats.sent}",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = {
+                    when {
+                        network.running -> MeshService.stop(context)
+                        permissions.granted -> MeshService.start(context)
+                        else -> permissions.request()
+                    }
+                }) { Text(if (network.running) "Desligar rede" else "Ligar rede") }
+                OutlinedButton(onClick = onOpenNetwork) { Text("Detalhes") }
+            }
+        }
+    }
 }
 
 @Composable

@@ -162,6 +162,21 @@ data class DeviationEventEntity(
     val maxDistanceMeters: Double,
 )
 
+/** Mensagem da rede em malha guardada para repassar ("armazenar e encaminhar"). */
+@Entity(tableName = "mesh_messages", indices = [Index("supersedeKey"), Index("expiresAt")])
+class MeshMessageEntity(
+    @PrimaryKey val id: String,
+    val origin: String,
+    val priority: Int,
+    val createdAt: Long,
+    val expiresAt: Long,
+    val supersedeKey: String?,
+    /** Envelope codificado, pronto para enviar. */
+    val payload: ByteArray,
+    /** deviceIds que já têm a mensagem, separados por vírgula. */
+    val deliveredTo: String,
+)
+
 /** Área de mapa baixada para uso offline. */
 @Entity(tableName = "offline_areas")
 data class OfflineAreaEntity(

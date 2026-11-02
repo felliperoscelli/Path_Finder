@@ -9,6 +9,8 @@ import com.pathfinder.data.settings.SettingsRepository
 import com.pathfinder.geo.AndroidDeclinationProvider
 import com.pathfinder.map.OfflineMapManager
 import com.pathfinder.net.DeviceIdentity
+import com.pathfinder.net.MeshCore
+import com.pathfinder.net.RoomMessageStore
 import com.pathfinder.net.NearbyManager
 import com.pathfinder.net.NetworkHub
 import kotlinx.coroutines.CoroutineScope
@@ -27,6 +29,8 @@ class AppContainer(context: Context) {
     val navigationRepository = NavigationRepository(database)
     val settingsRepository = SettingsRepository(context)
     val offlineMapManager = OfflineMapManager(context.applicationContext)
-    val nearby = NearbyManager(context.applicationContext, DeviceIdentity(context), appScope)
-    val networkHub = NetworkHub(context.applicationContext, nearby, trailRepository, settingsRepository, appScope)
+    private val identity = DeviceIdentity(context)
+    val nearby = NearbyManager(context.applicationContext, identity, appScope)
+    val mesh = MeshCore(identity.deviceId, nearby, RoomMessageStore(database), appScope)
+    val networkHub = NetworkHub(context.applicationContext, nearby, mesh, trailRepository, settingsRepository, appScope)
 }

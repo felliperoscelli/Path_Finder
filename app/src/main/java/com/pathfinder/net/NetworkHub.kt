@@ -13,15 +13,18 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
- * Trata o que chega pela rede: importa trilhas recebidas, atualiza o painel
- * de monitores e, no coordenador, toca o alarme quando um grupo sai da rota.
+ * Liga a rede em malha ao app: trata o que chega (importa trilhas, atualiza o
+ * painel de monitores e, no coordenador, toca o alarme quando um grupo sai
+ * da rota) e envia as mensagens deste aparelho.
  */
 class NetworkHub(
     private val context: Context,
     val nearby: NearbyManager,
+    val mesh: MeshCore,
     private val trails: TrailRepository,
     settings: SettingsRepository,
     private val scope: CoroutineScope,
@@ -35,21 +38,46 @@ class NetworkHub(
     private val silenced = mutableSetOf<Pair<String, Long>>()
 
     init {
-        scope.launch { settings.settings.collect { role = it.role } }
-        scope.launch { nearby.incoming.collect(::handle) }
+        scope.launch {
+            settings.settings.collect {
+                role = it.role
+                mesh.localName = it.userName
+            }
+        }
+        scope.launch { mesh.delivered.collect(::handle) }
+        scope.launch {
+            nearby.events.collect { e ->
+                when (e) {
+                    is TransportEvent.Connected -> mesh.onPeerConnected(e.endpointId, e.deviceId)
+                    is TransportEvent.Disconnected -> mesh.onPeerDisconnected(e.endpointId)
+                    is TransportEvent.Bytes -> mesh.onReceived(e.endpointId, e.deviceId, e.bytes)
+                }
+            }
+        }
+        scope.launch {
+            while (true) {
+                mesh.prune()
+                delay(PRUNE_INTERVAL_MS)
+            }
+        }
     }
 
-    /** Envia uma mensagem deste aparelho, se a rede estiver ligada. */
+    /**
+     * Envia uma mensagem deste aparelho pela malha. Se não houver ninguém
+     * conectado, ela fica guardada e sai quando alguém se conectar.
+     */
     fun publish(body: Body, priority: Int) {
-        if (nearby.state.value.running) nearby.broadcast(body, priority)
+        scope.launch { mesh.originate(body, priority) }
     }
 
-    /** Envia a trilha a todos os aparelhos conectados; retorna quantos são. */
+    /**
+     * Envia a trilha a todos; retorna quantos aparelhos estão conectados agora
+     * (os outros recebem quando se conectarem, direto ou por repasse).
+     */
     suspend fun shareTrail(trailId: Long): Int {
         val pkg = trails.exportPackage(trailId) ?: return 0
-        val count = nearby.state.value.connected.size
-        if (count > 0) nearby.broadcast(TrailShare(pkg), Priority.NORMAL)
-        return count
+        mesh.originate(TrailShare(pkg), Priority.NORMAL)
+        return nearby.state.value.connected.size
     }
 
     /** Silencia o alarme dos desvios ativos neste momento. */
@@ -58,11 +86,9 @@ class NetworkHub(
         alerts.stop()
     }
 
-    private suspend fun handle(received: Received) {
-        val envelope = received.envelope
+    private suspend fun handle(envelope: Envelope) {
         when (val body = envelope.body) {
-            is TrailShare -> importTrail(body, envelope.originName)
-            is Hello -> Unit
+            is TrailShare -> if (role != UserRole.REPEATER) importTrail(body, envelope.originName)
             else -> {
                 _board.update { MonitorBoard.reduce(it, envelope) }
                 if (role == UserRole.COORDINATOR) alertCoordinator(envelope.origin, body)
@@ -107,6 +133,10 @@ class NetworkHub(
         } catch (e: Exception) {
             Log.w("NetworkHub", "Falha ao importar trilha", e)
         }
+    }
+
+    private companion object {
+        const val PRUNE_INTERVAL_MS = 5 * 60_000L
     }
 
     private fun notificationId(device: String) = Notifications.ID_REMOTE_ALERT_BASE + (device.hashCode() and 0xFFFF)

@@ -99,6 +99,41 @@ interface OfflineAreaDao {
 }
 
 @Dao
+interface MeshMessageDao {
+    @Query("SELECT COUNT(*) FROM mesh_messages WHERE id = :id")
+    suspend fun exists(id: String): Int
+
+    @Insert(onConflict = androidx.room.OnConflictStrategy.REPLACE)
+    suspend fun put(message: MeshMessageEntity)
+
+    @Query("SELECT * FROM mesh_messages WHERE supersedeKey = :key")
+    suspend fun bySupersedeKey(key: String): List<MeshMessageEntity>
+
+    @Query("DELETE FROM mesh_messages WHERE id IN (:ids)")
+    suspend fun delete(ids: List<String>)
+
+    /** Válidas que ainda não foram entregues ao aparelho (o filtro exato é feito em código). */
+    @Query("SELECT * FROM mesh_messages WHERE expiresAt > :now AND deliveredTo NOT LIKE '%' || :deviceId || '%'")
+    suspend fun pendingCandidates(deviceId: String, now: Long): List<MeshMessageEntity>
+
+    @Query("SELECT deliveredTo FROM mesh_messages WHERE id = :id")
+    suspend fun deliveredTo(id: String): String?
+
+    @Query("UPDATE mesh_messages SET deliveredTo = :deliveredTo WHERE id = :id")
+    suspend fun setDeliveredTo(id: String, deliveredTo: String)
+
+    @Query("DELETE FROM mesh_messages WHERE expiresAt <= :now")
+    suspend fun deleteExpired(now: Long)
+
+    @Query("SELECT COUNT(*) FROM mesh_messages")
+    suspend fun count(): Int
+
+    /** As [n] menos importantes (maior número de prioridade) e mais antigas. */
+    @Query("SELECT id FROM mesh_messages ORDER BY priority DESC, createdAt ASC LIMIT :n")
+    suspend fun leastImportant(n: Int): List<String>
+}
+
+@Dao
 interface NavigationDao {
     @Insert
     suspend fun insertSession(session: NavigationSessionEntity): Long

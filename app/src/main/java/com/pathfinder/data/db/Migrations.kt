@@ -41,5 +41,20 @@ object Migrations {
         "CREATE UNIQUE INDEX IF NOT EXISTS `index_trails_uuid` ON `trails` (`uuid`)",
     )
 
-    val ALL = arrayOf(MIGRATION_1_2, MIGRATION_2_3)
+    /** v4: mensagens guardadas da rede em malha. */
+    val MIGRATION_3_4 = object : Migration(3, 4) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            SQL_3_4.forEach(db::execSQL)
+        }
+    }
+
+    internal val SQL_3_4 = listOf(
+        "CREATE TABLE IF NOT EXISTS `mesh_messages` (`id` TEXT NOT NULL, `origin` TEXT NOT NULL, " +
+            "`priority` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, `expiresAt` INTEGER NOT NULL, " +
+            "`supersedeKey` TEXT, `payload` BLOB NOT NULL, `deliveredTo` TEXT NOT NULL, PRIMARY KEY(`id`))",
+        "CREATE INDEX IF NOT EXISTS `index_mesh_messages_supersedeKey` ON `mesh_messages` (`supersedeKey`)",
+        "CREATE INDEX IF NOT EXISTS `index_mesh_messages_expiresAt` ON `mesh_messages` (`expiresAt`)",
+    )
+
+    val ALL = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
 }

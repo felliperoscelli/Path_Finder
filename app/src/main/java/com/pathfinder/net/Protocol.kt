@@ -20,7 +20,7 @@ object Priority {
 /**
  * Mensagem trocada entre aparelhos. O [id] único, a [origin] e o contador de
  * [hops] permitem descartar cópias e evitar loops quando a rede em malha
- * repassar mensagens (etapa 6).
+ * repassa mensagens.
  */
 @Serializable
 data class Envelope(
@@ -29,18 +29,16 @@ data class Envelope(
     val origin: String,
     val originName: String,
     val createdAt: Long,
+    /** Quantas vezes a mensagem já foi repassada (0 = veio direto da origem). */
     val hops: Int = 0,
     val priority: Int = Priority.NORMAL,
+    /** deviceId do destinatário, ou null para todos. Os outros aparelhos só repassam. */
+    val to: String? = null,
     val body: Body,
 )
 
 @Serializable
 sealed interface Body
-
-/** Apresentação ao conectar. */
-@Serializable
-@SerialName("hello")
-data class Hello(val role: String, val name: String) : Body
 
 /** Coordenador → monitores: trilha completa. */
 @Serializable

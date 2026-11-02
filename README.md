@@ -13,7 +13,7 @@ A especificação completa está em [`docs/especificacao.md`](docs/especificacao
 | 3 | Edição de pontos e ficha em PDF | ✅ |
 | 4 | Navegação do monitor e alerta de desvio local | ✅ |
 | 5 | Nearby Connections entre dois aparelhos | ✅ |
-| 6 | Rede em malha com repasse e armazenamento | — |
+| 6 | Rede em malha com repasse e armazenamento | ✅ |
 | 7 | Painel do coordenador, alertas remotos e mensagens | — |
 | 8 | Testes de campo e ajustes de bateria | — |
 
@@ -136,6 +136,30 @@ A especificação completa está em [`docs/especificacao.md`](docs/especificacao
 - **Banco de dados v3**: cada trilha ganhou um identificador global (`uuid`), com migração.
 
 Observação: a rede aceita qualquer aparelho com o Path Finder e a rede ligada por perto.
+
+## Etapa 6 – rede em malha com repasse e armazenamento
+
+- **Repasse** (`net/MeshCore.kt`): cada aparelho entrega a si mesmo e repassa às outras
+  conexões toda mensagem nova, com o contador de saltos +1 (até 16 saltos, suficiente para
+  pistas de ~2 km com aparelhos a cada 150 m). Cópias com o mesmo ID são descartadas, o que
+  evita duplicação e loops.
+- **Armazenar e encaminhar**: as mensagens ficam guardadas no banco (sobrevivem ao
+  fechamento do app) até vencer. Quando um aparelho se conecta, recebe tudo o que ainda não
+  tem. Cada mensagem registra quem já a recebeu, para não reenviar.
+- **Validade**: posição 15 min, ponto alcançado 2 h, alertas 6 h, trilha 24 h. Só a
+  posição mais recente de cada monitor é guardada e repassada; o mesmo vale para a versão
+  mais nova de cada trilha e para as repetições de um mesmo alerta. O armazenamento é
+  limitado a 2 000 mensagens, descartando primeiro as menos importantes.
+- **Prioridade**: cada conexão tem sua fila de envio; alertas saem antes de mensagens
+  normais, e estas antes das posições. O próximo envio só começa quando o anterior é
+  confirmado.
+- **Mensagens diretas**: o protocolo aceita destinatário (`to`); os outros aparelhos só
+  repassam. Será usado nas mensagens individuais da etapa 7.
+- **Perfil Repetidor** (Configurações): para celulares antigos fixos nos pontos
+  intermediários, ligados a power bank. A tela inicial vira um painel com botão para ligar
+  a rede e os números de mensagens guardadas e repassadas; o GPS não é usado.
+- A tela "Rede local" mostra os números da malha (guardadas, recebidas, repassadas, enviadas).
+- **Banco de dados v4** com a tabela das mensagens da malha, com migração.
 
 ## Como compilar
 

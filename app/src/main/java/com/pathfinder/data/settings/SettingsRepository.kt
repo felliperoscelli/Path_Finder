@@ -14,6 +14,9 @@ import kotlinx.coroutines.flow.map
 enum class UserRole(val label: String) {
     COORDINATOR("Coordenador"),
     MONITOR("Monitor"),
+
+    /** Celular fixo num ponto intermediário, só repassando mensagens. */
+    REPEATER("Repetidor"),
 }
 
 enum class CoordinateFormat(val label: String) {

@@ -16,6 +16,7 @@ import com.google.android.gms.nearby.connection.Payload
 import com.google.android.gms.nearby.connection.PayloadCallback
 import com.google.android.gms.nearby.connection.PayloadTransferUpdate
 import com.google.android.gms.nearby.connection.Strategy
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -27,6 +28,8 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
+import java.util.concurrent.ConcurrentHashMap
 import java.io.ByteArrayInputStream
 
 enum class PeerStatus { FOUND, CONNECTING, CONNECTED }
@@ -48,31 +51,34 @@ data class NetworkState(
     val connected: List<Peer> get() = peers.values.filter { it.status == PeerStatus.CONNECTED }
 }
 
-/** Mensagem recebida e de qual conexão direta ela veio. */
-data class Received(val envelope: Envelope, val fromEndpoint: String)
+/** Eventos da camada de transporte, consumidos pela malha ([MeshCore]). */
+sealed interface TransportEvent {
+    data class Connected(val endpointId: String, val deviceId: String) : TransportEvent
+    data class Disconnected(val endpointId: String) : TransportEvent
+    class Bytes(val endpointId: String, val deviceId: String, val bytes: ByteArray) : TransportEvent
+}
 
 /**
- * Comunicação offline entre celulares pela Nearby Connections
+ * Transporte offline entre celulares pela Nearby Connections
  * (estratégia P2P_CLUSTER: Wi-Fi Direct/Bluetooth, vários aparelhos).
  * Cada aparelho anuncia e procura ao mesmo tempo e aceita conexões
- * automaticamente, sem ação do usuário.
+ * automaticamente, sem ação do usuário. O repasse e o armazenamento das
+ * mensagens ficam na malha ([MeshCore]).
  */
 class NearbyManager(
     context: Context,
     private val identity: DeviceIdentity,
     private val scope: CoroutineScope,
-) {
+) : MeshTransport {
     private val client: ConnectionsClient = Nearby.getConnectionsClient(context)
     private val _state = MutableStateFlow(NetworkState())
     val state: StateFlow<NetworkState> = _state.asStateFlow()
 
-    private val _incoming = MutableSharedFlow<Received>(extraBufferCapacity = 128)
-    val incoming: SharedFlow<Received> = _incoming.asSharedFlow()
+    private val _events = MutableSharedFlow<TransportEvent>(extraBufferCapacity = 256)
+    val events: SharedFlow<TransportEvent> = _events.asSharedFlow()
 
-    /** IDs de mensagens já vistas, para descartar cópias. */
-    private val seen = object : LinkedHashMap<String, Unit>(256, 0.75f, false) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Unit>?) = size > MAX_SEEN
-    }
+    /** Envios aguardando confirmação, por id do payload. */
+    private val inFlight = ConcurrentHashMap<Long, CompletableDeferred<Boolean>>()
 
     private var localName = ""
     private var localRole = ""
@@ -96,30 +102,32 @@ class NearbyManager(
         client.stopAdvertising()
         client.stopDiscovery()
         client.stopAllEndpoints()
+        _state.value.connected.forEach { _events.tryEmit(TransportEvent.Disconnected(it.endpointId)) }
+        inFlight.values.forEach { it.complete(false) }
+        inFlight.clear()
         _state.value = NetworkState()
     }
 
-    /** Cria e envia uma mensagem nova deste aparelho para todos os conectados. */
-    fun broadcast(body: Body, priority: Int, now: Long = System.currentTimeMillis()): Envelope {
-        val envelope = Envelope(origin = identity.deviceId, originName = localName, createdAt = now, priority = priority, body = body)
-        markSeen(envelope.id)
-        send(envelope, _state.value.connected.map { it.endpointId })
-        return envelope
-    }
-
-    /** Envia uma mensagem (própria ou repassada) para as conexões indicadas. */
-    fun send(envelope: Envelope, endpointIds: List<String>) {
-        if (endpointIds.isEmpty()) return
-        val bytes = Wire.encode(envelope)
+    /** Envia bytes a uma conexão e espera a confirmação de entrega. */
+    override suspend fun send(endpointId: String, bytes: ByteArray): Boolean {
         val payload = if (bytes.size <= ConnectionsClient.MAX_BYTES_DATA_SIZE) {
             Payload.fromBytes(bytes)
         } else {
             Payload.fromStream(ByteArrayInputStream(bytes))
         }
-        client.sendPayload(endpointIds, payload).addOnFailureListener { Log.w(TAG, "Falha ao enviar", it) }
+        val done = CompletableDeferred<Boolean>()
+        inFlight[payload.id] = done
+        client.sendPayload(endpointId, payload).addOnFailureListener {
+            Log.w(TAG, "Falha ao enviar para $endpointId", it)
+            done.complete(false)
+        }
+        val timeout = if (payload.type == Payload.Type.STREAM) STREAM_TIMEOUT_MS else BYTES_TIMEOUT_MS
+        return try {
+            withTimeoutOrNull(timeout) { done.await() } ?: false
+        } finally {
+            inFlight.remove(payload.id)
+        }
     }
-
-    private fun markSeen(id: String): Boolean = synchronized(seen) { seen.put(id, Unit) == null }
 
     private val discovery = object : EndpointDiscoveryCallback() {
         override fun onEndpointFound(endpointId: String, info: DiscoveredEndpointInfo) {
@@ -169,10 +177,7 @@ class NearbyManager(
             val p = _state.value.peers[endpointId] ?: return
             if (resolution.status.isSuccess) {
                 putPeer(p.copy(status = PeerStatus.CONNECTED))
-                send(
-                    Envelope(origin = identity.deviceId, originName = localName, createdAt = System.currentTimeMillis(), body = Hello(localRole, localName)),
-                    listOf(endpointId),
-                )
+                _events.tryEmit(TransportEvent.Connected(endpointId, p.deviceId))
             } else {
                 putPeer(p.copy(status = PeerStatus.FOUND))
                 scope.launch { delay(RETRY_MS); requestIfIdle(endpointId) }
@@ -181,6 +186,7 @@ class NearbyManager(
 
         override fun onDisconnected(endpointId: String) {
             val p = _state.value.peers[endpointId] ?: return
+            _events.tryEmit(TransportEvent.Disconnected(endpointId))
             putPeer(p.copy(status = PeerStatus.FOUND))
             scope.launch { delay(RETRY_MS); requestIfIdle(endpointId) }
         }
@@ -198,22 +204,19 @@ class NearbyManager(
             }
         }
 
-        override fun onPayloadTransferUpdate(endpointId: String, update: PayloadTransferUpdate) = Unit
+        override fun onPayloadTransferUpdate(endpointId: String, update: PayloadTransferUpdate) {
+            val ok = when (update.status) {
+                PayloadTransferUpdate.Status.SUCCESS -> true
+                PayloadTransferUpdate.Status.FAILURE, PayloadTransferUpdate.Status.CANCELED -> false
+                else -> return
+            }
+            inFlight[update.payloadId]?.complete(ok)
+        }
     }
 
     private fun deliver(endpointId: String, bytes: ByteArray) {
-        val envelope = try {
-            Wire.decode(bytes)
-        } catch (e: Exception) {
-            Log.w(TAG, "Mensagem inválida de $endpointId", e)
-            return
-        }
-        if (envelope.origin == identity.deviceId || !markSeen(envelope.id)) return
-        val body = envelope.body
-        if (body is Hello) {
-            _state.value.peers[endpointId]?.let { putPeer(it.copy(name = body.name, role = body.role)) }
-        }
-        _incoming.tryEmit(Received(envelope, endpointId))
+        val peer = _state.value.peers[endpointId] ?: return
+        _events.tryEmit(TransportEvent.Bytes(endpointId, peer.deviceId, bytes))
     }
 
     private fun parsePeer(endpointId: String, endpointName: String, status: PeerStatus): Peer? {
@@ -236,7 +239,8 @@ class NearbyManager(
         private val STRATEGY = Strategy.P2P_CLUSTER
         private const val SEP = "|"
         private const val TAG = "NearbyManager"
-        private const val MAX_SEEN = 2_000
+        private const val BYTES_TIMEOUT_MS = 30_000L
+        private const val STREAM_TIMEOUT_MS = 120_000L
         private const val FALLBACK_REQUEST_MS = 8_000L
         private const val RETRY_MS = 5_000L
     }
