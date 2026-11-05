@@ -2,6 +2,7 @@ package com.pathfinder.ui
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.navigation.NavController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -20,8 +21,10 @@ import com.pathfinder.ui.offline.OfflineMapsScreen
 import com.pathfinder.ui.points.PointsScreen
 import com.pathfinder.ui.results.ResultsScreen
 import com.pathfinder.ui.settings.SettingsScreen
+import com.pathfinder.ui.splash.SplashScreen
 
 private object Routes {
+    const val SPLASH = "splash"
     const val HOME = "home"
     const val MAP = "map?trailId={trailId}"
     const val POINTS = "points/{trailId}"
@@ -45,6 +48,15 @@ private object Routes {
     fun session(sessionId: Long) = "session/$sessionId"
 }
 
+/**
+ * Sai da abertura para a página inicial, tirando a abertura da pilha (o voltar não retorna a
+ * ela). Não faz nada se a abertura já saiu, por exemplo quando uma notificação abriu outra tela.
+ */
+private fun NavController.leaveSplash() {
+    if (currentDestination?.route != Routes.SPLASH) return
+    navigate(Routes.HOME) { popUpTo(Routes.SPLASH) { inclusive = true } }
+}
+
 /** Pedido para abrir uma trilha vindo de uma notificação. */
 data class OpenTrail(val trailId: Long, val navigation: Boolean)
 
@@ -65,6 +77,7 @@ fun PathFinderNavHost(
             else -> null
         }
         if (route != null) {
+            nav.leaveSplash()
             nav.navigate(route) { popUpTo(Routes.HOME); launchSingleTop = true }
             onScreenOpened()
         }
@@ -73,12 +86,16 @@ fun PathFinderNavHost(
     LaunchedEffect(openTrail) {
         if (openTrail != null) {
             val route = if (openTrail.navigation) Routes.navigate(openTrail.trailId) else Routes.map(openTrail.trailId)
+            nav.leaveSplash()
             nav.navigate(route) { popUpTo(Routes.HOME) }
             onTrailOpened()
         }
     }
 
-    NavHost(navController = nav, startDestination = Routes.HOME) {
+    NavHost(navController = nav, startDestination = Routes.SPLASH) {
+        composable(Routes.SPLASH) {
+            SplashScreen(onFinished = { nav.leaveSplash() })
+        }
         composable(Routes.HOME) {
             HomeScreen(
                 onOpenTrail = { nav.navigate(Routes.map(it)) },
