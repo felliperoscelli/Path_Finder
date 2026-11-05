@@ -11,6 +11,7 @@ import androidx.navigation.navArgument
 import com.pathfinder.MainActivity
 import com.pathfinder.ui.dashboard.DashboardScreen
 import com.pathfinder.ui.diagnostics.DiagnosticsScreen
+import com.pathfinder.ui.group.GroupScreen
 import com.pathfinder.ui.home.HomeScreen
 import com.pathfinder.ui.messages.MessagesScreen
 import com.pathfinder.ui.map.MapScreen
@@ -22,10 +23,13 @@ import com.pathfinder.ui.points.PointsScreen
 import com.pathfinder.ui.results.ResultsScreen
 import com.pathfinder.ui.settings.SettingsScreen
 import com.pathfinder.ui.splash.SplashScreen
+import com.pathfinder.ui.trails.TrailsScreen
 
 private object Routes {
     const val SPLASH = "splash"
     const val HOME = "home"
+    const val TRAILS = "trails"
+    const val GROUP = "group"
     const val MAP = "map?trailId={trailId}"
     const val POINTS = "points/{trailId}"
     const val NAVIGATE = "navigate/{trailId}"
@@ -98,14 +102,30 @@ fun PathFinderNavHost(
         }
         composable(Routes.HOME) {
             HomeScreen(
+                onOpenTrails = { nav.navigate(Routes.TRAILS) },
+                onOpenGroup = { nav.navigate(Routes.GROUP) },
+                onOpenSettings = { nav.navigate(Routes.SETTINGS) },
+                onOpenMessages = { nav.navigate(Routes.messages()) },
+                onOpenNavigation = { nav.navigate(Routes.navigate(it)) },
+                onOpenRecording = { nav.navigate(Routes.map(it)) },
+            )
+        }
+        composable(Routes.TRAILS) {
+            TrailsScreen(
+                onBack = { nav.popBackStack() },
                 onOpenTrail = { nav.navigate(Routes.map(it)) },
                 onNavigateTrail = { nav.navigate(Routes.navigate(it)) },
                 onOpenMap = { nav.navigate(Routes.map()) },
                 onOpenOfflineMaps = { nav.navigate(Routes.OFFLINE) },
                 onOpenSettings = { nav.navigate(Routes.SETTINGS) },
-                onOpenNetwork = { nav.navigate(Routes.NETWORK) },
-                onOpenMessages = { nav.navigate(Routes.messages()) },
+            )
+        }
+        composable(Routes.GROUP) {
+            GroupScreen(
+                onBack = { nav.popBackStack() },
                 onOpenDashboard = { nav.navigate(Routes.DASHBOARD) },
+                onOpenNetwork = { nav.navigate(Routes.NETWORK) },
+                onOpenTrails = { nav.navigate(Routes.TRAILS) },
             )
         }
         composable(

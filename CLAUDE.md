@@ -35,8 +35,9 @@ Sempre rodar testes + lint antes de commitar. A lógica fica em código puro e t
   `EventCode`.
 - `transfer/` trilha em JSON/GPX. `pdf/` ficha e relatórios. `results/` resultado da pista.
 - `power/` economia de bateria. `diagnostics/` registro CSV de campo.
-- `ui/` telas Compose por pasta (home, map, points, navigate, dashboard, messages, results,
-  network, diagnostics, offline, settings) e `components/` compartilhados.
+- `ui/` telas Compose por pasta (splash, home = página inicial, trails, group, map, points,
+  navigate, dashboard, messages, results, network, diagnostics, offline, settings) e
+  `components/` compartilhados. `plans/` planos (Grátis / Modo grupo).
 
 ## Regras importantes
 
@@ -103,13 +104,14 @@ voltar à base). O app já foi instalado e funciona no celular; teste de campo c
    sem fins lucrativos pode baixar áreas; se sim, liberar o download do satélite. "Mapa
    simples" ficou de fora: os tiles do OpenStreetMap proíbem download para uso offline.
    Talvez depois: migrar para MapLibre (mapas vetoriais), mudança grande.
-2. **Tela de abertura** (pendente): logo da bússola grande e "Path Finder" embaixo, fundo
+2. **Tela de abertura – feito (nov/2026)**: logo da bússola grande e "Path Finder" embaixo, fundo
    verde #2E5E3E (core-splashscreen + tela Compose curta, rota "splash" fora da pilha).
-3. **Nova página inicial** (pendente): 4 botões grandes (grade 2×2): **Mapa** (lista de
+3. **Nova página inicial – feito (nov/2026)**: 4 botões grandes (grade 2×2): **Mapa** (lista de
    trilhas, agora `ui/trails/TrailsScreen.kt`), **Grupo** (rede local, painel do coordenador,
    navegar em grupo, painel do repetidor), **Configurações** e **Mensagens** (contador de não
    lidas); cartão "Em andamento" quando houver navegação ou gravação; links das notificações
-   continuam funcionando. Grupo e Mensagens são do futuro Modo grupo (ainda sem bloqueio).
+   continuam funcionando. Grupo e Mensagens são do futuro Modo grupo: ainda sem bloqueio
+   (`plans/Plans.kt`, `groupModeUnlocked` = true no piloto; aviso pronto na `HomeScreen`).
 4. Teste de campo (`docs/teste-de-campo.md`) e ajustes a partir dos CSVs de diagnóstico.
 5. Etapa extra (seção 9.1): internet via Firebase (envio duplo, gateway, sincronização).
    Depende de o usuário criar o projeto Firebase (`google-services.json`) e decidir sobre

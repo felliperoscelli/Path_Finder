@@ -1,4 +1,4 @@
-package com.pathfinder.ui.home
+package com.pathfinder.ui.trails
 
 import android.app.Application
 import android.net.Uri
@@ -22,7 +22,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
-class HomeViewModel(
+class TrailsViewModel(
     private val app: Application,
     private val trails: TrailRepository,
     private val settings: SettingsRepository,
@@ -79,7 +79,7 @@ class HomeViewModel(
         val Factory = viewModelFactory {
             initializer {
                 val c = appContainer()
-                HomeViewModel(this[APPLICATION_KEY]!!, c.trailRepository, c.settingsRepository)
+                TrailsViewModel(this[APPLICATION_KEY]!!, c.trailRepository, c.settingsRepository)
             }
         }
     }

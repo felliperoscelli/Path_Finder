@@ -44,7 +44,8 @@ A especificação completa está em [`docs/especificacao.md`](docs/especificacao
   escolha os níveis de zoom (até 17), veja a estimativa de tiles/MB e baixe. As áreas
   ficam salvas no aparelho (cache de até 2 GB, válido por 1 ano) e funcionam sem
   internet. Cada área tem limite de 20 000 tiles para respeitar o servidor do OpenTopoMap.
-- **Telas**: lista de trilhas (criar/apagar), mapa, mapas offline e configurações.
+- **Telas**: abertura com a logo, página inicial (Mapa, Grupo, Configurações, Mensagens e
+  cartão "Em andamento"), lista de trilhas (criar/apagar), mapa, mapas offline e configurações.
 
 ## Etapa 2 – gravação da trilha
 
@@ -120,7 +121,7 @@ A especificação completa está em [`docs/especificacao.md`](docs/especificacao
 
 ## Etapa 5 – comunicação entre aparelhos e compartilhamento da trilha
 
-- **Rede local** (ícone de rede na tela inicial): liga a Nearby Connections (estratégia
+- **Rede local** (Início → Grupo → Rede local): liga a Nearby Connections (estratégia
   `P2P_CLUSTER`, Bluetooth + Wi-Fi Direct) em um serviço em primeiro plano. Cada aparelho
   anuncia e procura ao mesmo tempo e conecta sozinho aos outros aparelhos com o app e a
   rede ligada; reconecta se a ligação cair. A tela mostra os aparelhos e o estado de cada um.
@@ -141,7 +142,7 @@ A especificação completa está em [`docs/especificacao.md`](docs/especificacao
   (O painel com mapa vem na etapa 7.)
 - **Arquivos**: exportar a trilha como `.json` (formato completo do Path Finder, inclui o
   percurso gravado) ou `.gpx` (abre em Google Earth, OsmAnd etc.) para compartilhar ou
-  salvar; importar `.json` ou `.gpx` pelo ícone de arquivo da tela inicial.
+  salvar; importar `.json` ou `.gpx` pelo menu da tela Trilhas.
 - **Banco de dados v3**: cada trilha ganhou um identificador global (`uuid`), com migração.
 
 Observação: a rede aceita qualquer aparelho com o Path Finder e a rede ligada por perto.
@@ -165,14 +166,14 @@ Observação: a rede aceita qualquer aparelho com o Path Finder e a rede ligada 
 - **Mensagens diretas**: o protocolo aceita destinatário (`to`); os outros aparelhos só
   repassam. Será usado nas mensagens individuais da etapa 7.
 - **Perfil Repetidor** (Configurações): para celulares antigos fixos nos pontos
-  intermediários, ligados a power bank. A tela inicial vira um painel com botão para ligar
+  intermediários, ligados a power bank. A tela Grupo vira um painel com botão para ligar
   a rede e os números de mensagens guardadas e repassadas; o GPS não é usado.
 - A tela "Rede local" mostra os números da malha (guardadas, recebidas, repassadas, enviadas).
 - **Banco de dados v4** com a tabela das mensagens da malha, com migração.
 
 ## Etapa 7 – painel do coordenador, alertas remotos e mensagens
 
-- **Painel** (perfil Coordenador, ícone na tela inicial): mapa topográfico offline com a
+- **Painel** (perfil Coordenador, Início → Grupo → Painel do coordenador): mapa topográfico offline com a
   trilha (escolhida automaticamente pela que os grupos estão navegando, ou pelo menu) e
   um ícone por grupo com o nome, na cor do estado: verde na rota, laranja afastado,
   vermelho fora da rota, cinza sem notícias há mais de 3 min. Tocar no ícone mostra o
@@ -185,7 +186,7 @@ Observação: a rede aceita qualquer aparelho com o Path Finder e a rede ligada 
 - **Indicador de rede** no painel: "Malha · N" com o número de aparelhos conectados.
 - **Mensagens** (todos os perfis, menos Repetidor): conversa com mensagens gerais ou
   individuais (escolha do destinatário entre os aparelhos conhecidos, ou "Responder só
-  para…"). Histórico guardado no aparelho; contador de não lidas na tela inicial e na
+  para…"). Histórico guardado no aparelho; contador de não lidas no botão Mensagens do início e na
   navegação. Mensagens recebidas geram notificação.
 - **Alertas rápidos** do monitor: "Grupo perdido" e "Precisamos de ajuda" (urgentes:
   prioridade de alerta e alarme no coordenador), "Chegamos ao ponto" e "Tudo certo",
