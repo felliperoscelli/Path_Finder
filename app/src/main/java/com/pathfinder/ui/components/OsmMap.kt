@@ -19,7 +19,11 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.compose.runtime.LaunchedEffect
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.pathfinder.PathFinderApp
 import com.pathfinder.map.GeoBounds
+import com.pathfinder.map.MapLayer
 import com.pathfinder.map.TopoMap
 import org.osmdroid.events.DelayedMapListener
 import org.osmdroid.events.MapListener
@@ -27,7 +31,9 @@ import org.osmdroid.events.ScrollEvent
 import org.osmdroid.events.ZoomEvent
 import org.osmdroid.views.CustomZoomButtonsController
 import org.osmdroid.views.MapView
+import org.osmdroid.views.overlay.CopyrightOverlay
 import org.osmdroid.views.overlay.ScaleBarOverlay
+import org.osmdroid.views.overlay.gestures.RotationGestureOverlay
 import org.osmdroid.views.overlay.mylocation.GpsMyLocationProvider
 import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay
 
@@ -35,14 +41,18 @@ import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay
 private const val MAX_DISPLAY_ZOOM = 19.0
 
 /**
- * Cria um [MapView] com a camada OpenTopoMap, ligado ao ciclo de vida da tela.
+ * Cria um [MapView] ligado ao ciclo de vida da tela, com a camada escolhida pelo usuário
+ * (ou [fixedLayer], se indicada), giro com dois dedos e a atribuição do fornecedor.
  */
 @Composable
-fun rememberTopoMapView(): MapView {
+fun rememberTopoMapView(fixedLayer: MapLayer? = null): MapView {
     val context = LocalContext.current
+    val chosen by remember { (context.applicationContext as PathFinderApp).container.settingsRepository.settings }
+        .collectAsStateWithLifecycle(initialValue = null)
+    val layer = fixedLayer ?: chosen?.mapLayer
     val mapView = remember {
         MapView(context).apply {
-            setTileSource(TopoMap.OPEN_TOPO_MAP)
+            setTileSource((fixedLayer ?: MapLayer.TOPO).tileSource)
             setMultiTouchControls(true)
             zoomController.setVisibility(CustomZoomButtonsController.Visibility.NEVER)
             isTilesScaledToDpi = true
@@ -51,7 +61,19 @@ fun rememberTopoMapView(): MapView {
             controller.setZoom(TopoMap.DEFAULT_ZOOM)
             controller.setCenter(TopoMap.DEFAULT_CENTER)
             overlays.add(ScaleBarOverlay(this).apply { setAlignBottom(true) })
+            overlays.add(RotationGestureOverlay(this).apply { isEnabled = true })
+            overlays.add(
+                CopyrightOverlay(context).apply {
+                    setAlignBottom(true)
+                    setAlignRight(true)
+                    setTextSize(10)
+                },
+            )
         }
+    }
+    LaunchedEffect(mapView, layer) {
+        val source = layer?.tileSource ?: return@LaunchedEffect
+        if (mapView.tileProvider.tileSource.name() != source.name()) mapView.setTileSource(source)
     }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     DisposableEffect(lifecycle, mapView) {
@@ -106,7 +128,15 @@ fun VisibleBoundsListener(mapView: MapView, onChange: (GeoBounds, zoom: Double) 
 fun rememberMyLocationOverlay(mapView: MapView, enabled: Boolean): MyLocationNewOverlay? {
     val context = LocalContext.current
     val overlay = remember(mapView, enabled) {
-        if (enabled) MyLocationNewOverlay(GpsMyLocationProvider(context), mapView) else null
+        if (enabled) {
+            MyLocationNewOverlay(GpsMyLocationProvider(context), mapView).apply {
+                setDirectionArrow(MapIcons.myLocation(context), MapIcons.myLocationDirection(context))
+                setPersonAnchor(0.5f, 0.5f)
+                setDirectionAnchor(0.5f, 0.5f)
+            }
+        } else {
+            null
+        }
     }
     DisposableEffect(overlay) {
         if (overlay != null) {

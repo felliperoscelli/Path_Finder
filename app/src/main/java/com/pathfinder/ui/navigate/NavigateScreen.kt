@@ -21,7 +21,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CenterFocusStrong
 import androidx.compose.material.icons.filled.Flag
-import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Navigation
 import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material.icons.filled.SkipNext
@@ -37,7 +36,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -82,6 +80,7 @@ import com.pathfinder.navigation.NavigationStatus
 import com.pathfinder.PathFinderApp
 import com.pathfinder.recording.RecordingSession
 import com.pathfinder.ui.components.EmergencyButton
+import com.pathfinder.ui.components.MapControls
 import androidx.compose.material.icons.automirrored.filled.Message
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
@@ -229,14 +228,6 @@ fun NavigateScreen(
             )
         },
         snackbarHost = { SnackbarHost(snackbar) },
-        floatingActionButton = {
-            FloatingActionButton(onClick = {
-                when {
-                    !permission.granted -> permission.request()
-                    myLocation?.centerOnMe(mapView) != true -> scope.launch { snackbar.showSnackbar("Aguardando sinal do GPS…") }
-                }
-            }) { Icon(Icons.Filled.MyLocation, "Minha localização") }
-        },
         bottomBar = {
             val t = trail
             when {
@@ -279,6 +270,12 @@ fun NavigateScreen(
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
             TopoMap(mapView, Modifier.fillMaxSize())
+            MapControls(mapView, Modifier.align(Alignment.BottomEnd).padding(12.dp)) {
+                when {
+                    !permission.granted -> permission.request()
+                    myLocation?.centerOnMe(mapView) != true -> scope.launch { snackbar.showSnackbar("Aguardando sinal do GPS…") }
+                }
+            }
             if (status != null && trail != null) {
                 Column(
                     Modifier.align(Alignment.TopCenter).fillMaxWidth().padding(8.dp),

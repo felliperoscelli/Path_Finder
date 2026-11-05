@@ -3,6 +3,7 @@ package com.pathfinder.ui.map
 import android.graphics.Color
 import com.pathfinder.data.db.TrackPointEntity
 import com.pathfinder.data.db.TrailPointEntity
+import com.pathfinder.ui.components.MapIcons
 import org.osmdroid.util.BoundingBox
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
@@ -57,11 +58,7 @@ class TrailLayer(
         markers.forEachIndexed { i, marker ->
             marker.isEnabled = !hideUnreached || i in reached
             marker.alpha = if (i in reached && i != next) 0.4f else 1f
-            if (i == next) {
-                marker.icon = marker.icon?.constantState?.newDrawable()?.mutate()?.apply { setTint(Color.rgb(46, 125, 50)) }
-            } else {
-                marker.setDefaultIcon()
-            }
+            marker.icon = pinIcon(i, if (i == next) MapIcons.PIN_GREEN else MapIcons.PIN_RED)
         }
         mapView.invalidate()
     }
@@ -84,6 +81,7 @@ class TrailLayer(
                 markers += Marker(mapView).apply {
                     position = geo[index]
                     title = "${p.sequence + 1}. ${p.name}"
+                    icon = pinIcon(index, MapIcons.PIN_RED)
                     setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
                     isDraggable = editing
                     setOnMarkerClickListener { _, _ -> onPointClick(p); true }
@@ -128,6 +126,9 @@ class TrailLayer(
             }
         }
     }
+
+    /** Pino com o número do ponto na trilha (1, 2, 3…). */
+    private fun pinIcon(index: Int, color: Int) = MapIcons.pin(mapView.context, "${index + 1}", color)
 
     private fun insertBelowMyLocation(items: List<Overlay>) {
         val index = mapView.overlays.indexOfFirst { it is MyLocationNewOverlay }

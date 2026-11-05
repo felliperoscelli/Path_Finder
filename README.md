@@ -31,6 +31,15 @@ A especificação completa está em [`docs/especificacao.md`](docs/especificacao
   tempo de parada, intervalo de posição e formato de coordenadas.
 - **Mapa topográfico** – osmdroid com camada OpenTopoMap (curvas de nível), posição
   atual do usuário, escala e exibição da trilha (linha e pontos numerados).
+- **Aparência do mapa** – botões redondos flutuantes à direita: camadas, bússola (a agulha
+  vermelha mostra o norte; tocar volta o mapa para norte acima) e minha localização. O mapa
+  gira com dois dedos. Ponto azul com seta na direção do movimento e pinos numerados (o
+  próximo ponto da navegação fica verde).
+- **Camadas** – botão de camadas: **Curvas de nível** (OpenTopoMap) ou **Satélite**
+  (EOxCloudless/Sentinel-2 2024, ~10 m por pixel, uso não comercial com atribuição). A escolha
+  vale para todos os mapas. O satélite não é baixado em "Mapas offline" (os termos do serviço
+  gratuito não preveem download de áreas): sem internet ele mostra só o que já foi visto com
+  internet, guardado por 1 ano.
 - **Mapa offline** – tela "Mapas offline": posicione o mapa sobre a área do evento,
   escolha os níveis de zoom (até 17), veja a estimativa de tiles/MB e baixe. As áreas
   ficam salvas no aparelho (cache de até 2 GB, válido por 1 ano) e funcionam sem

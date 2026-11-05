@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.pathfinder.map.MapLayer
 import com.pathfinder.power.PowerMode
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -54,6 +55,8 @@ data class AppSettings(
     val powerMode: PowerMode = PowerMode.AUTO,
     /** Mostra o botão de ensaio com caminhada simulada. */
     val allowSimulation: Boolean = false,
+    /** Camada de fundo escolhida no mapa (curvas de nível ou satélite). */
+    val mapLayer: MapLayer = MapLayer.TOPO,
 ) {
     companion object {
         const val DEFAULT_DEVIATION_DISTANCE_M = 30
@@ -93,6 +96,7 @@ class SettingsRepository(context: Context) {
             p[HIGH_CONTRAST] = s.highContrast
             p[POWER_MODE] = s.powerMode.name
             p[ALLOW_SIMULATION] = s.allowSimulation
+            p[MAP_LAYER] = s.mapLayer.name
         }
     }
 
@@ -117,6 +121,7 @@ class SettingsRepository(context: Context) {
             highContrast = p[HIGH_CONTRAST] ?: d.highContrast,
             powerMode = p[POWER_MODE]?.let { runCatching { PowerMode.valueOf(it) }.getOrNull() } ?: d.powerMode,
             allowSimulation = p[ALLOW_SIMULATION] ?: d.allowSimulation,
+            mapLayer = p[MAP_LAYER]?.let { runCatching { MapLayer.valueOf(it) }.getOrNull() } ?: d.mapLayer,
         )
     }
 
@@ -137,5 +142,6 @@ class SettingsRepository(context: Context) {
         val HIGH_CONTRAST = booleanPreferencesKey("high_contrast")
         val POWER_MODE = stringPreferencesKey("power_mode")
         val ALLOW_SIMULATION = booleanPreferencesKey("allow_simulation")
+        val MAP_LAYER = stringPreferencesKey("map_layer")
     }
 }

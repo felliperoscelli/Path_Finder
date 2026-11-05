@@ -83,6 +83,7 @@ import com.pathfinder.net.WatchKind
 import com.pathfinder.ui.appContainer
 import com.pathfinder.ui.components.EmergencyRed
 import com.pathfinder.ui.components.TopoMap
+import com.pathfinder.ui.components.MapControls
 import com.pathfinder.ui.components.rememberTopoMapView
 import com.pathfinder.ui.map.TrailLayer
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -245,6 +246,7 @@ fun DashboardScreen(
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
             TopoMap(mapView, Modifier.fillMaxSize())
+            MapControls(mapView, Modifier.align(Alignment.CenterEnd).padding(12.dp))
             IconButton(
                 onClick = { trailLayer.zoomToTrail() },
                 modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp),

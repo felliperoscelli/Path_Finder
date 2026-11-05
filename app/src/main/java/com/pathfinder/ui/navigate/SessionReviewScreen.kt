@@ -28,6 +28,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
@@ -47,6 +48,7 @@ import com.pathfinder.geo.Geodesy
 import com.pathfinder.geo.LatLon
 import com.pathfinder.ui.appContainer
 import com.pathfinder.ui.components.TopoMap
+import com.pathfinder.ui.components.MapControls
 import com.pathfinder.ui.components.rememberTopoMapView
 import com.pathfinder.ui.map.TrackLine
 import com.pathfinder.ui.map.TrailLayer
@@ -159,7 +161,10 @@ fun SessionReviewScreen(
             if (s != null && t != null) Summary(s, t, track, deviations)
         },
     ) { padding ->
-        Box(Modifier.fillMaxSize().padding(padding)) { TopoMap(mapView, Modifier.fillMaxSize()) }
+        Box(Modifier.fillMaxSize().padding(padding)) {
+            TopoMap(mapView, Modifier.fillMaxSize())
+            MapControls(mapView, Modifier.align(Alignment.CenterEnd).padding(12.dp))
+        }
     }
 
     if (confirmDelete) {

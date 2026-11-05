@@ -61,16 +61,16 @@ voltar à base). O app já foi instalado e funciona no celular; teste de campo c
 
 ## Próximos passos combinados
 
-1. **Aparência do mapa** (pedido do usuário: "mais no estilo do Google Maps" e opção de
-   alternar entre curvas de nível e vegetação). Plano proposto:
-   - interface no estilo Google: botões redondos flutuantes (localização, bússola/norte,
-     camadas), ponto azul com direção, pinos numerados, rotação do mapa;
-   - seletor de camadas com miniaturas: Curvas de nível (OpenTopoMap), Satélite/vegetação
-     (candidato: Sentinel-2 cloudless da EOX, uso não comercial, ~10 m) e um Mapa simples;
-     **confirmar os termos de uso offline de cada fornecedor antes de implementar**;
-   - talvez depois: migrar para MapLibre (mapas vetoriais), mudança grande.
-   Perguntas em aberto para o usuário: o que mais incomodou (estilo do OpenTopoMap, botões e
-   marcadores, ou ambos) e se "vegetação" é imagem de satélite ou mapa desenhado.
+1. **Aparência do mapa – feito (nov/2026)**: botões redondos (`ui/components/MapControls.kt`:
+   camadas, bússola, localização), giro do mapa, ponto azul com seta e pinos numerados
+   (`MapIcons.kt`), camadas em `map/MapLayer.kt` (escolha salva em `AppSettings.mapLayer`).
+   O usuário quis "ambos" (estilo e controles) e "vegetação" = imagem de satélite.
+   Termos conferidos: o serviço gratuito da EOX (satélite) é não comercial e não prevê download
+   de áreas, então o satélite tem `FLAG_NO_BULK` e fica fora de `OfflineMapManager` (só o cache
+   do que foi visto). Pendente: o usuário pode perguntar à EOX (cloudless@eox.at) se um clube
+   sem fins lucrativos pode baixar áreas; se sim, liberar o download do satélite. "Mapa
+   simples" ficou de fora: os tiles do OpenStreetMap proíbem download para uso offline.
+   Talvez depois: migrar para MapLibre (mapas vetoriais), mudança grande.
 2. Teste de campo (`docs/teste-de-campo.md`) e ajustes a partir dos CSVs de diagnóstico.
 3. Etapa extra (seção 9.1): internet via Firebase (envio duplo, gateway, sincronização).
    Depende de o usuário criar o projeto Firebase (`google-services.json`) e decidir sobre
