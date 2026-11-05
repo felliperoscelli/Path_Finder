@@ -94,7 +94,8 @@ private fun NetworkCard() {
     val network by container.nearby.state.collectAsStateWithLifecycle()
     val settings by container.settingsRepository.settings.collectAsStateWithLifecycle(initialValue = null)
     val permissions = rememberNearbyPermissions(onGranted = { MeshService.start(context) })
-    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
+    // Cores neutras: o aviso em vermelho não se lê sobre o verde do alto contraste.
+    Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
@@ -120,7 +121,7 @@ private fun NetworkCard() {
                     if (s.eventCode.isBlank()) "Sem código de evento: rede aberta (defina em Configurações)."
                     else "Código do evento: ${s.eventCode}",
                     style = MaterialTheme.typography.bodySmall,
-                    color = if (s.eventCode.isBlank()) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onPrimaryContainer,
+                    color = if (s.eventCode.isBlank()) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             network.error?.let {

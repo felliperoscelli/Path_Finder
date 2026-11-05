@@ -2,7 +2,6 @@ package com.pathfinder.ui.home
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -34,16 +33,19 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -96,7 +98,7 @@ fun HomeScreen(
             if (navigation.isActive && navTrail != null) {
                 InProgressCard(
                     icon = Icons.Filled.Explore,
-                    title = "Navegação em andamento",
+                    title = "Navegando",
                     detail = navigation.groupName.ifBlank { "Toque para voltar à navegação" },
                     onClick = { onOpenNavigation(navTrail) },
                 )
@@ -104,8 +106,8 @@ fun HomeScreen(
             if (recTrail != null) {
                 InProgressCard(
                     icon = Icons.Filled.FiberManualRecord,
-                    title = "Gravação de trilha em andamento",
-                    detail = "${recording.trackPoints} posições do GPS gravadas",
+                    title = "Gravando trilha",
+                    detail = if (recording.trackPoints == 1) "1 posição do GPS gravada" else "${recording.trackPoints} posições do GPS gravadas",
                     onClick = { onOpenRecording(recTrail) },
                 )
             }
@@ -203,22 +205,39 @@ private fun HomeButton(
             contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
         ),
     ) {
-        // Tela estreita (ou letra grande do alto contraste): texto menor para não partir a palavra.
-        BoxWithConstraints(Modifier.fillMaxWidth()) {
-            val labelStyle = if (maxWidth < 150.dp) MaterialTheme.typography.titleSmall else MaterialTheme.typography.titleMedium
-            Column(
-                Modifier.fillMaxWidth().heightIn(min = 132.dp).padding(12.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically),
-            ) {
-                BadgedBox(badge = { if (badge > 0) Badge { Text("$badge") } }) {
-                    Icon(icon, contentDescription = null, modifier = Modifier.size(40.dp))
-                }
-                Text(label, style = labelStyle, textAlign = TextAlign.Center)
-                if (note != null) {
-                    Text(note, style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center)
-                }
+        Column(
+            Modifier.fillMaxWidth().heightIn(min = 132.dp).padding(12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically),
+        ) {
+            BadgedBox(badge = { if (badge > 0) Badge { Text("$badge") } }) {
+                Icon(icon, contentDescription = null, modifier = Modifier.size(40.dp))
+            }
+            FitText(label, MaterialTheme.typography.titleMedium)
+            if (note != null) {
+                Text(note, style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center)
             }
         }
     }
+}
+
+/**
+ * Uma linha que diminui a letra até caber: em tela estreita ou com letra grande (alto contraste,
+ * fonte do sistema) "Configurações" não pode ser partida no meio da palavra.
+ */
+@Composable
+private fun FitText(text: String, style: TextStyle) {
+    var scale by remember(text, style) { mutableFloatStateOf(1f) }
+    var ready by remember(text, style) { mutableStateOf(false) }
+    Text(
+        text,
+        style = style.copy(fontSize = style.fontSize * scale),
+        maxLines = 1,
+        softWrap = false,
+        textAlign = TextAlign.Center,
+        onTextLayout = { layout ->
+            if (layout.didOverflowWidth && scale > 0.5f) scale *= 0.9f else ready = true
+        },
+        modifier = Modifier.drawWithContent { if (ready) drawContent() },
+    )
 }
