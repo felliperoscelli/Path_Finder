@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Logo do Path Finder: rosa dos ventos com anel, marcas N/L/S/O e agulha norte (vermelha)
+  e sul (branca). Desenhada para fundo verde (#2E5E3E). Tudo dentro do círculo central de
+  72 unidades, a área que a abertura do Android 12+ sempre mostra.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Anel -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2.5"
+        android:pathData="M54,22 A32,32 0 1,1 53.99,22 Z" />
+    <!-- Marcas dos rumos intermediários (NE, SE, SO, NO) -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:pathData="M71.7,36.3 L74.5,33.5 M71.7,71.7 L74.5,74.5 M36.3,71.7 L33.5,74.5 M36.3,36.3 L33.5,33.5" />
+    <!-- Letras N, L, S, O -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M51.8,33 L51.8,27 L56.2,33 L56.2,27
+            M76.2,51 L76.2,57 L80.4,57
+            M56.3,76 C55.5,74.6 51.8,74.7 51.8,76.4 C51.8,78.3 56.3,77.7 56.3,79.6 C56.3,81.3 52.5,81.4 51.7,80
+            M30,51 A2.3,3 0 1,1 29.99,51 Z" />
+    <!-- Agulha: norte vermelha, sul branca -->
+    <path
+        android:fillColor="#E53935"
+        android:pathData="M54,36 L59,54 L49,54 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,72 L59,54 L49,54 Z" />
+    <path
+        android:fillColor="#2E5E3E"
+        android:pathData="M54,52 A2,2 0 1,1 53.99,52 Z" />
+</vector>

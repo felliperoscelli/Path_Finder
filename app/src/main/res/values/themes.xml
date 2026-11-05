@@ -1,3 +1,10 @@
 <resources>
     <style name="Theme.PathFinder" parent="android:Theme.Material.Light.NoActionBar" />
+
+    <!-- Abertura do sistema: mesmo verde e mesma bússola da tela de abertura em Compose -->
+    <style name="Theme.PathFinder.Starting" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/ic_launcher_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_logo</item>
+        <item name="postSplashScreenTheme">@style/Theme.PathFinder</item>
+    </style>
 </resources>

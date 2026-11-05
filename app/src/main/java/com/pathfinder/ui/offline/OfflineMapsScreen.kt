@@ -46,6 +46,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.pathfinder.data.db.OfflineAreaEntity
 import com.pathfinder.map.DownloadState
+import com.pathfinder.map.MapLayer
 import com.pathfinder.map.OfflineMapManager
 import com.pathfinder.map.TopoMap
 import com.pathfinder.ui.components.TopoMap
@@ -69,7 +70,8 @@ fun OfflineMapsScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val areas by viewModel.savedAreas.collectAsStateWithLifecycle()
-    val mapView = rememberTopoMapView()
+    // O download é só de curvas de nível; o mapa mostra a mesma camada que será baixada.
+    val mapView = rememberTopoMapView(fixedLayer = MapLayer.TOPO)
     val areaLayer = remember(mapView) { AreaLayer(mapView) }
     var areaName by rememberSaveable { mutableStateOf("") }
 

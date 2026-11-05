@@ -33,7 +33,7 @@ object TopoMap {
             "https://b.tile.opentopomap.org/",
             "https://c.tile.opentopomap.org/",
         ),
-        "Dados: © OpenStreetMap, SRTM | Estilo: © OpenTopoMap (CC-BY-SA)",
+        "© OpenStreetMap, SRTM · OpenTopoMap (CC-BY-SA)",
         TileSourcePolicy(
             2,
             TileSourcePolicy.FLAG_USER_AGENT_MEANINGFUL or TileSourcePolicy.FLAG_USER_AGENT_NORMALIZED,
