@@ -62,18 +62,26 @@ fun rememberTopoMapView(fixedLayer: MapLayer? = null): MapView {
             controller.setCenter(TopoMap.DEFAULT_CENTER)
             overlays.add(ScaleBarOverlay(this).apply { setAlignBottom(true) })
             overlays.add(RotationGestureOverlay(this).apply { isEnabled = true })
+            // Atribuição do fornecedor logo acima da barra de escala, no canto esquerdo.
+            val density = context.resources.displayMetrics.density
             overlays.add(
                 CopyrightOverlay(context).apply {
                     setAlignBottom(true)
-                    setAlignRight(true)
+                    setAlignRight(false)
                     setTextSize(10)
+                    setOffset((8 * density).toInt(), (30 * density).toInt())
                 },
             )
         }
     }
     LaunchedEffect(mapView, layer) {
-        val source = layer?.tileSource ?: return@LaunchedEffect
+        val current = layer ?: return@LaunchedEffect
+        val source = current.tileSource
         if (mapView.tileProvider.tileSource.name() != source.name()) mapView.setTileSource(source)
+        mapView.overlays.filterIsInstance<CopyrightOverlay>().forEach {
+            it.setTextColor(if (current.darkBackground) android.graphics.Color.WHITE else android.graphics.Color.DKGRAY)
+        }
+        mapView.invalidate()
     }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     DisposableEffect(lifecycle, mapView) {

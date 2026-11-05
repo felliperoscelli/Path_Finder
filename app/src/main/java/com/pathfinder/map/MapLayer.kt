@@ -24,6 +24,16 @@ enum class MapLayer(
             TOPO -> TopoMap.OPEN_TOPO_MAP
             SATELLITE -> SatelliteMap.TILE_SOURCE
         }
+
+    /** Atribuição completa do fornecedor (no mapa aparece a versão curta da camada). */
+    val attribution: String
+        get() = when (this) {
+            TOPO -> "Dados: © OpenStreetMap, SRTM | Estilo: © OpenTopoMap (CC-BY-SA)"
+            SATELLITE -> SatelliteMap.ATTRIBUTION
+        }
+
+    /** Imagem de satélite é escura: a atribuição sobre ela vai em branco. */
+    val darkBackground: Boolean get() = this == SATELLITE
 }
 
 /**
@@ -38,12 +48,19 @@ object SatelliteMap {
     const val LAYER = "s2cloudless-2024_3857"
     const val BASE_URL = "https://tiles.maps.eox.at/wmts/1.0.0/"
 
-    /** Acima disso a imagem não tem mais detalhe (10 m/pixel); o mapa só amplia. */
-    const val MAX_ZOOM = 15
+    /**
+     * A imagem tem ~10 m/pixel (detalhe real até o zoom 14), mas o servidor entrega tiles
+     * suavizados até o 17; ampliar no aparelho a partir de zooms menores fica quadriculado.
+     */
+    const val MAX_ZOOM = 17
 
+    /** Atribuição completa exigida pela EOX (mostrada no seletor de camadas). */
     const val ATTRIBUTION =
         "EOxCloudless 2024 (cloudless.eox.at) por EOX IT Services GmbH " +
             "(contém dados Copernicus Sentinel modificados 2024)"
+
+    /** Versão curta, escrita sobre o mapa; a EOX permite a completa em outro lugar em telas pequenas. */
+    const val SHORT_ATTRIBUTION = "EOxCloudless 2024 por EOX · Copernicus Sentinel 2024"
 
     /** Endereço WMTS de um tile: a ordem é zoom/linha/coluna (y antes de x). */
     fun tileUrl(zoom: Int, x: Int, y: Int): String =
@@ -59,7 +76,7 @@ object SatelliteMap {
         256,
         ".jpg",
         arrayOf(BASE_URL),
-        ATTRIBUTION,
+        SHORT_ATTRIBUTION,
         TileSourcePolicy(
             2,
             TileSourcePolicy.FLAG_NO_BULK or

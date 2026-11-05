@@ -22,6 +22,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -147,7 +148,8 @@ private fun MapLayerSheet(onDismiss: () -> Unit) {
     val settings by repository.settings.collectAsStateWithLifecycle(initialValue = null)
     val current = settings?.mapLayer ?: MapLayer.TOPO
     val scope = rememberCoroutineScope()
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    // Abre inteiro: meio aberto, o texto do fim ficava atrás da barra de navegação.
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(
             Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp).padding(bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -161,6 +163,11 @@ private fun MapLayerSheet(onDismiss: () -> Unit) {
                 }
             }
             Text(current.description, style = MaterialTheme.typography.bodyMedium)
+            Text(
+                "Fonte: ${current.attribution}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             if (!current.offlineDownload) {
                 Text(
                     "Sem internet, o satélite mostra só os lugares que você já abriu nele com internet " +
