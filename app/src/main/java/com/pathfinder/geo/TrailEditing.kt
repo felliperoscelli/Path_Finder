@@ -16,6 +16,18 @@ object TrailEditing {
         return result
     }
 
+    /**
+     * Itens que mudam de número ao levar o item da posição [from] para [to] (como em [move]),
+     * com a posição nova de cada um, na nova ordem. Ex.: [A, B, C], de 2 para 1 → [(1, C), (2, B)].
+     */
+    fun <T> renumbered(items: List<T>, from: Int, to: Int): List<Pair<Int, T>> {
+        if (from !in items.indices) return emptyList()
+        val target = to.coerceIn(items.indices)
+        if (target == from) return emptyList()
+        val moved = items.toMutableList().apply { add(target, removeAt(from)) }
+        return (minOf(from, target)..maxOf(from, target)).map { it to moved[it] }
+    }
+
     /** Insere [item] na posição [index] (0 = nova partida, size = no final). */
     fun <T> insert(items: List<T>, item: T, index: Int): List<T> =
         items.toMutableList().apply { add(index.coerceIn(0, size), item) }

@@ -13,6 +13,7 @@ import com.pathfinder.ui.dashboard.DashboardScreen
 import com.pathfinder.ui.diagnostics.DiagnosticsScreen
 import com.pathfinder.ui.group.GroupScreen
 import com.pathfinder.ui.home.HomeScreen
+import com.pathfinder.ui.livemap.LiveMapScreen
 import com.pathfinder.ui.messages.MessagesScreen
 import com.pathfinder.ui.map.MapScreen
 import com.pathfinder.ui.navigate.NavigateScreen
@@ -24,12 +25,15 @@ import com.pathfinder.ui.results.ResultsScreen
 import com.pathfinder.ui.settings.SettingsScreen
 import com.pathfinder.ui.splash.SplashScreen
 import com.pathfinder.ui.trails.TrailsScreen
+import com.pathfinder.ui.tutorial.TutorialScreen
 
 private object Routes {
     const val SPLASH = "splash"
     const val HOME = "home"
     const val TRAILS = "trails"
     const val GROUP = "group"
+    const val LIVE = "live"
+    const val TUTORIAL = "tutorial"
     const val MAP = "map?trailId={trailId}"
     const val POINTS = "points/{trailId}"
     const val NAVIGATE = "navigate/{trailId}"
@@ -59,6 +63,17 @@ private object Routes {
 private fun NavController.leaveSplash() {
     if (currentDestination?.route != Routes.SPLASH) return
     navigate(Routes.HOME) { popUpTo(Routes.SPLASH) { inclusive = true } }
+}
+
+/**
+ * Abre o mapa em tempo real; se ele já estiver na pilha (Mapa → Trilhas → Mapa), volta a ele
+ * em vez de empilhar outro.
+ */
+private fun NavController.openLiveMap() {
+    navigate(Routes.LIVE) {
+        popUpTo(Routes.LIVE)
+        launchSingleTop = true
+    }
 }
 
 /** Pedido para abrir uma trilha vindo de uma notificação. */
@@ -102,12 +117,13 @@ fun PathFinderNavHost(
         }
         composable(Routes.HOME) {
             HomeScreen(
-                onOpenTrails = { nav.navigate(Routes.TRAILS) },
+                onOpenMap = { nav.navigate(Routes.LIVE) },
                 onOpenGroup = { nav.navigate(Routes.GROUP) },
                 onOpenSettings = { nav.navigate(Routes.SETTINGS) },
                 onOpenMessages = { nav.navigate(Routes.messages()) },
                 onOpenNavigation = { nav.navigate(Routes.navigate(it)) },
                 onOpenRecording = { nav.navigate(Routes.map(it)) },
+                onOpenTutorial = { nav.navigate(Routes.TUTORIAL) },
             )
         }
         composable(Routes.TRAILS) {
@@ -115,10 +131,22 @@ fun PathFinderNavHost(
                 onBack = { nav.popBackStack() },
                 onOpenTrail = { nav.navigate(Routes.map(it)) },
                 onNavigateTrail = { nav.navigate(Routes.navigate(it)) },
-                onOpenMap = { nav.navigate(Routes.map()) },
+                onOpenMap = { nav.openLiveMap() },
                 onOpenOfflineMaps = { nav.navigate(Routes.OFFLINE) },
                 onOpenSettings = { nav.navigate(Routes.SETTINGS) },
             )
+        }
+        composable(Routes.LIVE) {
+            LiveMapScreen(
+                onBack = { nav.popBackStack() },
+                onOpenTrail = { nav.navigate(Routes.map(it)) },
+                onNavigateTrail = { nav.navigate(Routes.navigate(it)) },
+                onManageTrails = { nav.navigate(Routes.TRAILS) },
+                onOpenOfflineMaps = { nav.navigate(Routes.OFFLINE) },
+            )
+        }
+        composable(Routes.TUTORIAL) {
+            TutorialScreen(onBack = { nav.popBackStack() })
         }
         composable(Routes.GROUP) {
             GroupScreen(

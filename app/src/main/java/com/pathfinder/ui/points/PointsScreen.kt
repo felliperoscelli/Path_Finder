@@ -144,11 +144,12 @@ fun PointsScreen(
         if (editing != null) {
             EditPointDialog(
                 point = editing,
+                points = points,
                 format = format,
                 declinationDegrees = t.trail.declinationDegrees,
                 isBase = t.trail.isBase(editing),
-                onSave = { name, notes, photo ->
-                    viewModel.updatePoint(editing.id, name, notes, photo)
+                onSave = { name, notes, photo, newIndex ->
+                    viewModel.updatePoint(editing.id, name, notes, photo, newIndex.takeIf { it != editing.sequence })
                     editingPointId = null
                 },
                 onDelete = {

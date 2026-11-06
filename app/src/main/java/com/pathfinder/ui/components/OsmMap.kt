@@ -24,6 +24,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pathfinder.PathFinderApp
 import com.pathfinder.map.GeoBounds
 import com.pathfinder.map.MapLayer
+import com.pathfinder.map.SmoothTileProvider
 import com.pathfinder.map.TopoMap
 import org.osmdroid.events.DelayedMapListener
 import org.osmdroid.events.MapListener
@@ -51,8 +52,17 @@ fun rememberTopoMapView(fixedLayer: MapLayer? = null): MapView {
         .collectAsStateWithLifecycle(initialValue = null)
     val layer = fixedLayer ?: chosen?.mapLayer
     val mapView = remember {
-        MapView(context).apply {
-            setTileSource((fixedLayer ?: MapLayer.TOPO).tileSource)
+        val initial = (fixedLayer ?: MapLayer.TOPO).tileSource
+        // Provedor que amplia com suavização acima do zoom 17 (sem "quadriculado").
+        val provider = SmoothTileProvider(context.applicationContext, initial)
+        MapView(context, provider).apply {
+            setTileSource(initial)
+            provider.onRefreshed = ::invalidate
+            // Parado num zoom acima do 17: garante os tiles do 17 que a ampliação usa.
+            addMapListener(DelayedMapListener(object : MapListener {
+                override fun onScroll(event: ScrollEvent?): Boolean { ensureOverzoomParents(this@apply, provider); return false }
+                override fun onZoom(event: ZoomEvent?): Boolean { ensureOverzoomParents(this@apply, provider); return false }
+            }, 300))
             setMultiTouchControls(true)
             zoomController.setVisibility(CustomZoomButtonsController.Visibility.NEVER)
             isTilesScaledToDpi = true
@@ -99,6 +109,13 @@ fun rememberTopoMapView(fixedLayer: MapLayer? = null): MapView {
         onDispose { mapView.onDetach() }
     }
     return mapView
+}
+
+private fun ensureOverzoomParents(mapView: MapView, provider: SmoothTileProvider) {
+    val box = mapView.boundingBox
+    if (box.latNorth > box.latSouth && box.lonEast > box.lonWest) {
+        provider.ensureParents(GeoBounds(box.latNorth, box.latSouth, box.lonEast, box.lonWest), mapView.zoomLevelDouble)
+    }
 }
 
 /** Exibe um [MapView] criado por [rememberTopoMapView]. */

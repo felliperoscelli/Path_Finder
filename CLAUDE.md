@@ -35,9 +35,12 @@ Sempre rodar testes + lint antes de commitar. A lógica fica em código puro e t
   `EventCode`.
 - `transfer/` trilha em JSON/GPX. `pdf/` ficha e relatórios. `results/` resultado da pista.
 - `power/` economia de bateria. `diagnostics/` registro CSV de campo.
-- `ui/` telas Compose por pasta (splash, home = página inicial, trails, group, map, points,
-  navigate, dashboard, messages, results, network, diagnostics, offline, settings) e
-  `components/` compartilhados. `plans/` planos (Grátis / Modo grupo).
+- `ui/` telas Compose por pasta (splash, home = página inicial, livemap = mapa em tempo real,
+  trails, group, tutorial, map, points, navigate, dashboard, messages, results, network,
+  diagnostics, offline, settings) e `components/` compartilhados. `plans/` planos
+  (Grátis / Modo grupo).
+- `map/SmoothTileProvider.kt`: provedor de tiles do osmdroid que amplia com filtro acima do
+  zoom 17 (pula o `rescaleCache` do osmdroid lá em cima e baixa os tiles do 17 que faltam).
 
 ## Regras importantes
 
@@ -106,13 +109,18 @@ voltar à base). O app já foi instalado e funciona no celular; teste de campo c
    Talvez depois: migrar para MapLibre (mapas vetoriais), mudança grande.
 2. **Tela de abertura – feito (nov/2026)**: logo da bússola grande e "Path Finder" embaixo, fundo
    verde #2E5E3E (core-splashscreen + tela Compose curta, rota "splash" fora da pilha).
-3. **Nova página inicial – feito (nov/2026)**: 4 botões grandes (grade 2×2): **Mapa** (lista de
-   trilhas, agora `ui/trails/TrailsScreen.kt`), **Grupo** (rede local, painel do coordenador,
+3. **Nova página inicial – feito (nov/2026)**: 4 botões grandes (grade 2×2): **Mapa** (desde o teste
+   de campo, o mapa em tempo real `ui/livemap/`; a lista fica em `ui/trails/TrailsScreen.kt`), **Grupo** (rede local, painel do coordenador,
    navegar em grupo, painel do repetidor), **Configurações** e **Mensagens** (contador de não
    lidas); cartão "Em andamento" quando houver navegação ou gravação; links das notificações
    continuam funcionando. Grupo e Mensagens são do futuro Modo grupo: ainda sem bloqueio
    (`plans/Plans.kt`, `groupModeUnlocked` = true no piloto; aviso pronto na `HomeScreen`).
 4. Teste de campo (`docs/teste-de-campo.md`) e ajustes a partir dos CSVs de diagnóstico.
+   Primeira rodada feita (nov/2026); ajustes pedidos e **feitos**: zoom suave acima do 17,
+   bandeiras de início e fim, botão Mapa abrindo o mapa em tempo real com várias trilhas ao
+   mesmo tempo, tutorial "Como usar o app" e "Número na pista" na edição do ponto. Os CSVs de
+   diagnóstico ainda não foram analisados. Mais detalhe que o zoom 17 só com outra fonte de
+   mapa (vetorial/MapLibre ou satélite comercial).
 5. Etapa extra (seção 9.1): internet via Firebase (envio duplo, gateway, sincronização).
    Depende de o usuário criar o projeto Firebase (`google-services.json`) e decidir sobre
    privacidade (dados de localização de menores; LGPD).

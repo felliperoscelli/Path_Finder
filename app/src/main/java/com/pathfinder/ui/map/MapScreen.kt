@@ -292,11 +292,12 @@ fun MapScreen(
     if (selected != null) {
         EditPointDialog(
             point = selected,
+            points = trail?.orderedPoints.orEmpty(),
             format = format,
             declinationDegrees = trail?.trail?.declinationDegrees,
             isBase = trail?.trail?.isBase(selected) == true,
-            onSave = { name, notes, photo ->
-                viewModel.updatePoint(selected.id, name, notes, photo)
+            onSave = { name, notes, photo, newIndex ->
+                viewModel.updatePoint(selected.id, name, notes, photo, newIndex.takeIf { it != selected.sequence })
                 selectedPointId = null
             },
             onDelete = {

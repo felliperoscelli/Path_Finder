@@ -34,7 +34,17 @@ A especificação completa está em [`docs/especificacao.md`](docs/especificacao
 - **Aparência do mapa** – botões redondos flutuantes à direita: camadas, bússola (a agulha
   vermelha mostra o norte; tocar volta o mapa para norte acima) e minha localização. O mapa
   gira com dois dedos. Ponto azul com seta na direção do movimento e pinos numerados (o
-  próximo ponto da navegação fica verde).
+  próximo ponto da navegação fica verde). Bandeira verde no início da pista e quadriculada no
+  fim (escondidas no modo desafio, como os pontos).
+- **Zoom acima do 17** – as curvas de nível e o satélite só têm imagem até o zoom 17 (escala
+  de ~50 m). Mais perto, o tile do 17 é ampliado com suavização (`map/SmoothTileProvider.kt`)
+  em vez dos "quadradões" do osmdroid; os tiles do 17 que faltam na área são baixados. Não
+  ganha detalhe: só fica liso.
+- **Mapa em tempo real** (botão Mapa do início) – abre na posição do usuário e o acompanha até
+  ele arrastar o mapa. O botão "Trilhas" escolhe quais trilhas aparecem, **várias ao mesmo
+  tempo**, cada uma com uma cor (`map/TrailColors.kt`) e legenda no topo; a escolha fica
+  salva. Tocar num ponto mostra a trilha e o ponto, com "Abrir trilha" e "Navegar".
+  "Gerenciar" leva à lista de trilhas (criar, importar, apagar).
 - **Camadas** – botão de camadas: **Curvas de nível** (OpenTopoMap) ou **Satélite**
   (EOxCloudless/Sentinel-2 2024, ~10 m por pixel, uso não comercial com atribuição). A escolha
   vale para todos os mapas. O satélite não é baixado em "Mapas offline" (os termos do serviço
@@ -44,8 +54,9 @@ A especificação completa está em [`docs/especificacao.md`](docs/especificacao
   escolha os níveis de zoom (até 17), veja a estimativa de tiles/MB e baixe. As áreas
   ficam salvas no aparelho (cache de até 2 GB, válido por 1 ano) e funcionam sem
   internet. Cada área tem limite de 20 000 tiles para respeitar o servidor do OpenTopoMap.
-- **Telas**: abertura com a logo, página inicial (Mapa, Grupo, Configurações, Mensagens e
-  cartão "Em andamento"), lista de trilhas (criar/apagar), mapa, mapas offline e configurações.
+- **Telas**: abertura com a logo, página inicial (Mapa, Grupo, Configurações, Mensagens,
+  cartão "Em andamento" e tutorial "Como usar o app"), mapa em tempo real, lista de trilhas
+  (criar/apagar), mapa da trilha, mapas offline e configurações.
 
 ## Etapa 2 – gravação da trilha
 
@@ -79,7 +90,9 @@ A especificação completa está em [`docs/especificacao.md`](docs/especificacao
 - **Inserir pontos**: ao criar um ponto (GPS ou toque longo no mapa) é possível escolher
   a posição na trilha. O app sugere o trecho mais próximo de onde o ponto caiu, ou o
   final se ele estiver além do último ponto.
-- **Reordenar**: na lista de pontos, setas para subir/descer cada ponto.
+- **Reordenar**: na lista de pontos, setas para subir/descer cada ponto. Ao editar um ponto,
+  "Número na pista" leva o ponto direto para outra posição (o 3 virando 2 faz o antigo 2 virar
+  3), mostrando a nova ordem antes de salvar.
 - **Recálculo automático**: mover, apagar, inserir ou reordenar recalcula UTM,
   azimutes e distâncias da trilha inteira. A declinação fica a mesma da trilha.
 - **Editar trilha**: nome e limites de desvio próprios (distância e tempo).

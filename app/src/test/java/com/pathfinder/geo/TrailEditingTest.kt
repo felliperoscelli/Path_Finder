@@ -13,6 +13,18 @@ class TrailEditingTest {
         assertEquals(ids, TrailEditing.move(ids, { it }, 42L, 0))
     }
 
+    @Test fun renumberedShowsOnlyThePointsThatChange() {
+        val names = listOf("Base", "Pedra", "Árvore", "Ponte")
+        // Árvore (3º) vira o 2º; Pedra passa a ser o 3º.
+        assertEquals(listOf(1 to "Árvore", 2 to "Pedra"), TrailEditing.renumbered(names, 2, 1))
+        assertEquals(listOf(0 to "Pedra", 1 to "Árvore", 2 to "Base"), TrailEditing.renumbered(names, 0, 2))
+        assertEquals(emptyList<Pair<Int, String>>(), TrailEditing.renumbered(names, 1, 1))
+        assertEquals(listOf(1 to "Árvore", 2 to "Ponte", 3 to "Pedra"), TrailEditing.renumbered(names, 1, 99))
+        // Mesma ordem que move().
+        val moved = TrailEditing.move(ids, { it }, 3L, 1)
+        TrailEditing.renumbered(ids, 2, 1).forEach { (i, id) -> assertEquals(moved[i], id) }
+    }
+
     @Test fun insertAtStartMiddleEnd() {
         assertEquals(listOf(9L, 1L, 2L, 3L, 4L), TrailEditing.insert(ids, 9L, 0))
         assertEquals(listOf(1L, 2L, 9L, 3L, 4L), TrailEditing.insert(ids, 9L, 2))

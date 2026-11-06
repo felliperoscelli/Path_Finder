@@ -92,8 +92,13 @@ class MapViewModel(
         }
     }
 
-    fun updatePoint(pointId: Long, name: String, notes: String, photoPath: String?) {
-        viewModelScope.launch { trails.updatePointDetails(pointId, name, notes, photoPath) }
+    /** Salva nome, observações e foto e, se [newIndex] mudou, leva o ponto para essa posição na pista. */
+    fun updatePoint(pointId: Long, name: String, notes: String, photoPath: String?, newIndex: Int? = null) {
+        viewModelScope.launch {
+            trails.updatePointDetails(pointId, name, notes, photoPath)
+            // Depois dos detalhes, na mesma corrotina: a reordenação regrava os pontos.
+            if (newIndex != null) trails.reorderPoint(pointId, newIndex)
+        }
     }
 
     fun movePoint(pointId: Long, latitude: Double, longitude: Double) {

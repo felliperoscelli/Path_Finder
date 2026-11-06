@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.pathfinder.map.MapLayer
 import com.pathfinder.power.PowerMode
@@ -57,6 +58,8 @@ data class AppSettings(
     val allowSimulation: Boolean = false,
     /** Camada de fundo escolhida no mapa (curvas de nível ou satélite). */
     val mapLayer: MapLayer = MapLayer.TOPO,
+    /** Trilhas mostradas no mapa em tempo real (pode ser mais de uma). */
+    val visibleTrailIds: Set<Long> = emptySet(),
 ) {
     companion object {
         const val DEFAULT_DEVIATION_DISTANCE_M = 30
@@ -97,6 +100,7 @@ class SettingsRepository(context: Context) {
             p[POWER_MODE] = s.powerMode.name
             p[ALLOW_SIMULATION] = s.allowSimulation
             p[MAP_LAYER] = s.mapLayer.name
+            p[VISIBLE_TRAILS] = s.visibleTrailIds.map(Long::toString).toSet()
         }
     }
 
@@ -122,6 +126,7 @@ class SettingsRepository(context: Context) {
             powerMode = p[POWER_MODE]?.let { runCatching { PowerMode.valueOf(it) }.getOrNull() } ?: d.powerMode,
             allowSimulation = p[ALLOW_SIMULATION] ?: d.allowSimulation,
             mapLayer = p[MAP_LAYER]?.let { runCatching { MapLayer.valueOf(it) }.getOrNull() } ?: d.mapLayer,
+            visibleTrailIds = p[VISIBLE_TRAILS]?.mapNotNull(String::toLongOrNull)?.toSet() ?: d.visibleTrailIds,
         )
     }
 
@@ -143,5 +148,6 @@ class SettingsRepository(context: Context) {
         val POWER_MODE = stringPreferencesKey("power_mode")
         val ALLOW_SIMULATION = booleanPreferencesKey("allow_simulation")
         val MAP_LAYER = stringPreferencesKey("map_layer")
+        val VISIBLE_TRAILS = stringSetPreferencesKey("visible_trail_ids")
     }
 }

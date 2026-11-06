@@ -95,6 +95,72 @@ object MapIcons {
         return bitmap
     }
 
+    /**
+     * Bandeira no mapa. [anchorU]/[anchorV] deixam o pé do mastro ao lado do pino do ponto
+     * (valores fora de 0..1 deslocam a figura), para a bandeira não cobrir o número.
+     */
+    class Flag(val drawable: Drawable, val anchorU: Float, val anchorV: Float)
+
+    /** Bandeira verde do início da pista, à direita do pino. */
+    fun startFlag(context: Context): Flag = flag(context, finish = false)
+
+    /** Bandeira quadriculada do fim da pista, à esquerda do pino (no início e fim no mesmo lugar, não se cobrem). */
+    fun finishFlag(context: Context): Flag = flag(context, finish = true)
+
+    private val flags = HashMap<Boolean, Bitmap>()
+
+    private fun flag(context: Context, finish: Boolean): Flag {
+        val density = context.resources.displayMetrics.density
+        val bitmap = flags.getOrPut(finish) { drawFlag(density, finish) }
+        val poleX = if (finish) bitmap.width - FLAG_POLE_DP * density else FLAG_POLE_DP * density
+        // Pé do mastro a ~15 dp do centro do pino: fora do círculo do número.
+        val baseX = if (finish) -FLAG_GAP_DP * density else FLAG_GAP_DP * density
+        return Flag(BitmapDrawable(context.resources, bitmap), (poleX - baseX) / bitmap.width, 1f)
+    }
+
+    private fun drawFlag(density: Float, finish: Boolean): Bitmap {
+        val width = (26 * density).toInt()
+        val height = (32 * density).toInt()
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        // Desenha virada para a direita e espelha a do fim.
+        if (finish) canvas.scale(-1f, 1f, width / 2f, height / 2f)
+        val pole = FLAG_POLE_DP * density
+        val top = 2f * density
+        val flagW = width - pole - 2f * density
+        val flagH = 15f * density
+        canvas.drawLine(pole, top, pole, height - 1f * density, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.rgb(55, 55, 55)
+            strokeWidth = 2.4f * density
+            strokeCap = Paint.Cap.ROUND
+            setShadowLayer(1.5f * density, 0f, 0.5f * density, SHADOW)
+        })
+        val left = pole + 1f * density
+        val cloth = android.graphics.RectF(left, top, left + flagW, top + flagH)
+        if (finish) {
+            val cols = 4
+            val rows = 3
+            val cw = flagW / cols
+            val ch = flagH / rows
+            val paint = Paint()
+            for (r in 0 until rows) for (c in 0 until cols) {
+                paint.color = if ((r + c) % 2 == 0) Color.BLACK else Color.WHITE
+                canvas.drawRect(left + c * cw, top + r * ch, left + (c + 1) * cw, top + (r + 1) * ch, paint)
+            }
+        } else {
+            canvas.drawRect(cloth, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = PIN_GREEN })
+        }
+        canvas.drawRect(cloth, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = 1.5f * density
+            color = if (finish) Color.BLACK else Color.WHITE
+        })
+        return bitmap
+    }
+
+    private const val FLAG_POLE_DP = 3f
+    private const val FLAG_GAP_DP = 15f
+
     private fun darker(color: Int): Int =
         Color.rgb((Color.red(color) * 0.7f).toInt(), (Color.green(color) * 0.7f).toInt(), (Color.blue(color) * 0.7f).toInt())
 }

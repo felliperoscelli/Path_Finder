@@ -15,6 +15,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.Message
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.FiberManualRecord
 import androidx.compose.material.icons.filled.Groups
@@ -27,6 +28,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -58,17 +60,18 @@ import com.pathfinder.plans.Plans
 import com.pathfinder.recording.RecordingSession
 
 /**
- * Página inicial: cabeçalho com a logo e o usuário, cartão "Em andamento" e os quatro botões
- * (Mapa, Grupo, Configurações e Mensagens).
+ * Página inicial: cabeçalho com a logo e o usuário, cartão "Em andamento", os quatro botões
+ * (Mapa, Grupo, Configurações e Mensagens) e o tutorial "Como usar o app".
  */
 @Composable
 fun HomeScreen(
-    onOpenTrails: () -> Unit,
+    onOpenMap: () -> Unit,
     onOpenGroup: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenMessages: () -> Unit,
     onOpenNavigation: (trailId: Long) -> Unit,
     onOpenRecording: (trailId: Long) -> Unit,
+    onOpenTutorial: () -> Unit,
     groupModeUnlocked: Boolean = Plans.groupModeUnlocked,
 ) {
     val context = LocalContext.current
@@ -113,7 +116,7 @@ fun HomeScreen(
             }
 
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                HomeButton(Icons.Filled.Map, "Mapa", Modifier.weight(1f), onClick = onOpenTrails)
+                HomeButton(Icons.Filled.Map, "Mapa", Modifier.weight(1f), onClick = onOpenMap)
                 HomeButton(Icons.Filled.Groups, "Grupo", Modifier.weight(1f), onClick = groupFeature(onOpenGroup))
             }
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -128,6 +131,7 @@ fun HomeScreen(
                     onClick = groupFeature(onOpenMessages),
                 )
             }
+            TutorialButton(onOpenTutorial)
         }
     }
 
@@ -240,4 +244,19 @@ private fun FitText(text: String, style: TextStyle) {
         },
         modifier = Modifier.drawWithContent { if (ready) drawContent() },
     )
+}
+
+/** "Como usar o app": abre o tutorial com as funções principais. */
+@Composable
+private fun TutorialButton(onClick: () -> Unit) {
+    OutlinedCard(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
+        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Icon(Icons.AutoMirrored.Filled.MenuBook, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(32.dp))
+            Column(Modifier.weight(1f)) {
+                Text("Como usar o app", style = MaterialTheme.typography.titleMedium)
+                Text("Tutorial com as funções principais", style = MaterialTheme.typography.bodySmall)
+            }
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null)
+        }
+    }
 }

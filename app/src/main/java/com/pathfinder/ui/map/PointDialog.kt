@@ -44,6 +44,7 @@ import com.pathfinder.data.db.TrailPointEntity
 import com.pathfinder.data.settings.CoordinateFormat
 import com.pathfinder.geo.Formats
 import com.pathfinder.geo.LatLon
+import com.pathfinder.geo.TrailEditing
 import com.pathfinder.ui.components.CoordinateEntryDialog
 import java.io.File
 
@@ -189,15 +190,19 @@ fun NewPointDialog(
 @Composable
 fun EditPointDialog(
     point: TrailPointEntity,
+    /** Pontos da trilha na ordem atual, para escolher a nova posição na pista. */
+    points: List<TrailPointEntity>,
     format: CoordinateFormat,
     declinationDegrees: Double?,
     isBase: Boolean,
-    onSave: (name: String, notes: String, photoPath: String?) -> Unit,
+    /** [newIndex] é a posição escolhida na pista (0 = partida); igual à atual se não mudou. */
+    onSave: (name: String, notes: String, photoPath: String?, newIndex: Int) -> Unit,
     onDelete: () -> Unit,
     onMoveTo: (LatLon) -> Unit,
     onSetBase: () -> Unit,
     onDismiss: () -> Unit,
 ) {
+    var position by rememberSaveable(point.id) { mutableIntStateOf(point.sequence) }
     var typing by remember { mutableStateOf(false) }
     if (typing) {
         CoordinateEntryDialog(
@@ -215,10 +220,11 @@ fun EditPointDialog(
         initialName = point.name,
         initialNotes = point.notes,
         initialPhoto = point.photoPath,
-        onConfirm = onSave,
+        onConfirm = { name, notes, photo -> onSave(name, notes, photo, position) },
         onDismiss = onDismiss,
         onDelete = onDelete,
     ) {
+        if (points.size > 1) SequenceSelector(points, point, position) { position = it }
         val utm = Formats.utm(point.utmZone, point.utmBand, point.utmEasting, point.utmNorthing)
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(Formats.coordinate(format, point.latitude, point.longitude, utm), style = MaterialTheme.typography.bodyLarge)
@@ -267,6 +273,50 @@ private fun InsertPositionSelector(points: List<TrailPointEntity>, index: Int, o
             options.forEach { (i, label) ->
                 DropdownMenuItem(text = { Text(label) }, onClick = { onSelect(i); expanded = false })
             }
+        }
+    }
+}
+
+/**
+ * Número do ponto na pista. Escolher outro número leva o ponto para lá e empurra os do meio
+ * (o 3 virando 2 faz o antigo 2 virar 3); a mudança aparece embaixo antes de salvar.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SequenceSelector(points: List<TrailPointEntity>, point: TrailPointEntity, position: Int, onSelect: (Int) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    val current = points.indexOfFirst { it.id == point.id }
+    fun label(i: Int) = when {
+        i == current -> "${i + 1} (posição atual)"
+        else -> "${i + 1} (no lugar de ${points[i].name})"
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
+            OutlinedTextField(
+                value = label(position),
+                onValueChange = {},
+                readOnly = true,
+                label = { Text("Número na pista") },
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
+                modifier = Modifier.fillMaxWidth().menuAnchor(MenuAnchorType.PrimaryNotEditable),
+            )
+            ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                points.indices.forEach { i ->
+                    DropdownMenuItem(text = { Text(label(i)) }, onClick = { onSelect(i); expanded = false })
+                }
+            }
+        }
+        val changes = TrailEditing.renumbered(points, current, position)
+        if (changes.isNotEmpty()) {
+            Text(
+                "Nova ordem: " + changes.joinToString(" · ") { (i, p) -> "${i + 1}. ${p.name}" },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Text(
+                "Ao salvar, os azimutes e as distâncias são recalculados.",
+                style = MaterialTheme.typography.bodySmall,
+            )
         }
     }
 }
